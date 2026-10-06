@@ -1,0 +1,248 @@
+<body>
+<div id="busy"></div>
+
+<nav class="toc">
+  <div class="inner">
+    <a href="#s-input">Input</a>
+    <a href="#s-screen">Screen</a>
+    <a href="#s-verdict">Verdict</a>
+    <a href="#s-geom">Geometry</a>
+    <a href="#s-chan">Channels</a>
+    <a href="#s-cal">Calibration</a>
+    <a href="#s-attack">Attack sweep</a>
+    <a href="#s-wire">Wire</a>
+    <a href="#s-cost">Cost</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<header class="masthead">
+  <img class="logo" src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIj8+PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiBzdHlsZT0iaXNvbGF0aW9uOmlzb2xhdGUiIHZpZXdCb3g9IjAgMCAyNTAwIDI1MDAiIHdpZHRoPSIyNTAwcHQiIGhlaWdodD0iMjUwMHB0Ij48ZyBjbGlwLXBhdGg9InVybCgjX2NsaXBQYXRoX25wU0hPcmM5UzNtdDlHMDRiM1dzR1R1VXpIcjVNZzdsKSI+PHBhdGggZD0iIE0gMTE1MCAyMjAwIEwgMjAxMCAyMjAwIEMgMjExNC44NjQgMjIwMCAyMjAwIDIxMTQuODY0IDIyMDAgMjAxMCBMIDIyMDAgNDkwIEMgMjIwMCAzODUuMTM2IDIxMTQuODY0IDMwMCAyMDEwIDMwMCBMIDQ5MCAzMDAgQyAzODUuMTM2IDMwMCAzMDAgMzg1LjEzNiAzMDAgNDkwIEwgMzAwIDIwMTAgQyAzMDAgMjExNC44NjQgMzg1LjEzNiAyMjAwIDQ5MCAyMjAwIEwgNzUwIDIyMDAgTCA3NTAgMTY3MCBMIDc1MCAxNjcwIEwgNzUwIDEyNTAgTCA3NTAgODMwIEMgNzUwIDc4NS44NDcgNzg1Ljg0NyA3NTAgODMwIDc1MCBMIDE2NzAgNzUwIEMgMTcxNC4xNTMgNzUwIDE3NTAgNzg1Ljg0NyAxNzUwIDgzMCBMIDE3NTAgMTY3MCBDIDE3NTAgMTcxNC4xNTMgMTcxNC4xNTMgMTc1MCAxNjcwIDE3NTAgTCAxMTUwIDE3NTAgTCAxMTUwIDE3NTAgTCAxMTUwIDE3NTAgTCAxMTUwIDE3NTAgTCAxMTUwIDIyMDAgWiAgTSAxMzkwIDEwNTAgTCAxMTEwIDEwNTAgTCAxMTEwIDEwNTAgTCAxMTEwIDEwNTAgTCAxMTEwIDEwNTAgTCAxMTEwIDEwNTAgQyAxMDc2Ljg4NSAxMDUwIDEwNTAgMTA3Ni44ODUgMTA1MCAxMTEwIEwgMTA1MCAxMTEwIEwgMTA1MCAxMzkwIEMgMTA1MCAxNDIzLjExNSAxMDc2Ljg4NSAxNDUwIDExMTAgMTQ1MCBMIDEzOTAgMTQ1MCBDIDE0MjMuMTE1IDE0NTAgMTQ1MCAxNDIzLjExNSAxNDUwIDEzOTAgTCAxNDUwIDEzOTAgTCAxNDUwIDExMTAgQyAxNDUwIDEwNzYuODg1IDE0MjMuMTE1IDEwNTAgMTM5MCAxMDUwIFogIE0gMTgzMSA0ODIgTCAxNjg2LjgyIDQ4MiBDIDE2NTkuMzI0IDQ4MiAxNjM3IDUwNC4zMjQgMTYzNyA1MzEuODIgTCAxNjM3IDYyMC4xOCBDIDE2MzcgNjQ3LjY3NiAxNjU5LjMyNCA2NzAgMTY4Ni44MiA2NzAgTCAxNzUwIDY3MCBRIDE3OTAuNSA2NzIuNSAxODA5IDY4OCBDIDE4MjcuNSA3MDMuNSAxODMwLjQzOCA3MzUuNjI1IDE4MzEgNzUwIEwgMTgzMSA4MTQuMTggQyAxODMxIDg0MS42NzYgMTg1My4zMjQgODY0IDE4ODAuODIgODY0IEwgMTk2OS4xOCA4NjQgQyAxOTk2LjY3NiA4NjQgMjAxOSA4NDEuNjc2IDIwMTkgODE0LjE4IEwgMjAxOSA2NzAgTCAyMDE5IDYyMC4xOCBMIDIwMTkgNTUzIEMgMjAxOCA1MTAuNjY3IDE5ODcuMzMzIDQ4My4zMzMgMTk0MCA0ODIgTCAxODgwLjgyIDQ4MiBMIDE4MzEgNDgyIEwgMTgzMSA0ODIgTCAxODMxIDQ4MiBMIDE4MzEgNDgyIFogIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGZpbGw9InJnYigyNTUsMjU1LDI1NSkiPjwvcGF0aD48cGF0aCBkPSIgTSAxODMxIDQ4MiBMIDE2ODYuODIgNDgyIEMgMTY1OS4zMjQgNDgyIDE2MzcgNTA0LjMyNCAxNjM3IDUzMS44MiBMIDE2MzcgNjIwLjE4IEMgMTYzNyA2NDcuNjc2IDE2NTkuMzI0IDY3MCAxNjg2LjgyIDY3MCBMIDE3NTAgNjcwIFEgMTc5MC41IDY3Mi41IDE4MDkgNjg4IEMgMTgyNy41IDcwMy41IDE4MzAuNDM4IDczNS42MjUgMTgzMSA3NTAgTCAxODMxIDgxNC4xOCBDIDE4MzEgODQxLjY3NiAxODUzLjMyNCA4NjQgMTg4MC44MiA4NjQgTCAxOTY5LjE4IDg2NCBDIDE5OTYuNjc2IDg2NCAyMDE5IDg0MS42NzYgMjAxOSA4MTQuMTggTCAyMDE5IDY3MCBMIDIwMTkgNjIwLjE4IEwgMjAxOSA1NTMgQyAyMDE4IDUxMC42NjcgMTk4Ny4zMzMgNDgzLjMzMyAxOTQwIDQ4MiBMIDE4ODAuODIgNDgyIEwgMTgzMSA0ODIgWiAgTSAxMTEwIDEwNTAgTCAxMzkwIDEwNTAgQyAxNDIzLjExNSAxMDUwIDE0NTAgMTA3Ni44ODUgMTQ1MCAxMTEwIEwgMTQ1MCAxMzkwIEMgMTQ1MCAxNDIzLjExNSAxNDIzLjExNSAxNDUwIDEzOTAgMTQ1MCBMIDExMTAgMTQ1MCBDIDEwNzYuODg1IDE0NTAgMTA1MCAxNDIzLjExNSAxMDUwIDEzOTAgTCAxMDUwIDExMTAgQyAxMDUwIDEwNzYuODg1IDEwNzYuODg1IDEwNTAgMTExMCAxMDUwIEwgMTExMCAxMDUwIFogIE0gMTE1MCAxNzUwIEwgMTE1MCAyMjAwIEwgNzUwIDIyMDAgTCA3NTAgMTY3MCBMIDc1MCAxNjcwIEwgNzUwIDEyNTAgTCA3NTAgODMwIEMgNzUwIDc4NS44NDcgNzg1Ljg0NyA3NTAgODMwIDc1MCBMIDE2NzAgNzUwIEMgMTcxNC4xNTMgNzUwIDE3NTAgNzg1Ljg0NyAxNzUwIDgzMCBMIDE3NTAgMTY3MCBDIDE3NTAgMTcxNC4xNTMgMTcxNC4xNTMgMTc1MCAxNjcwIDE3NTAgTCAxMTUwIDE3NTAgTCAxMTUwIDE3NTAgWiAiIGZpbGwtcnVsZT0iZXZlbm9kZCIgZmlsbD0icmdiKDAsMCwwKSI+PC9wYXRoPjwvZz48L3N2Zz4=" alt="Pixagram">
+  <p class="px-eyebrow">paph-js 4.2 · SPEC-004.2 · comparator 42 · evidence bench</p>
+  <h1>Why this<br><span class="px-rainbow-text">is a copy</span></h1>
+  <p class="sub">Everything below is computed from <b>3,952 bytes</b> of tier&nbsp;1 plus the tier&nbsp;2
+     keypoint records — never from the pixels again. What is new in 4.2 is the second half of the
+     sentence: each channel now argues its case <b>through its own calibration table</b>, and geometry
+     keeps a reading even when no model clears the acceptance floor.</p>
+  <div class="chipline">
+    <span class="chip hero">Comparator 42</span>
+    <span class="chip" id="profileChip">CAL-004-PROPOSED</span>
+    <span class="chip" id="engineChip">Engine · JavaScript</span>
+    <span class="chip">Integer only</span>
+    <span class="chip">Runs entirely in this page</span>
+    <span class="chip">Nothing is uploaded</span>
+  </div>
+</header>
+
+<!-- ================================================== 1. INPUT -->
+<section id="s-input">
+  <div class="sec-head">
+    <h2><span class="num">01</span>Input</h2>
+    <span class="ref mono">drop · paste · or derive B from A</span>
+  </div>
+  <div class="grid g2">
+    <div class="plate" id="plateA" tabindex="0">
+      <div class="plate-hd"><span class="slot">Work A</span><span class="dim" id="dimA">—</span></div>
+      <div class="plate-body" id="bodyA"><div class="plate-hint">Drop a PNG, click to browse,<br>or paste from the clipboard</div></div>
+      <div class="plate-ft" id="ftA"></div>
+    </div>
+    <div class="plate" id="plateB" tabindex="0">
+      <div class="plate-hd"><span class="slot">Work B</span><span class="dim" id="dimB">—</span></div>
+      <div class="plate-body" id="bodyB"><div class="plate-hint">Drop a second work,<br>or derive one from A below</div></div>
+      <div class="plate-ft" id="ftB"></div>
+    </div>
+  </div>
+  <div class="bar">
+    <span class="px-eyebrow" style="margin-right:4px">Samples</span>
+    <button data-sample="sprite">Sprite</button>
+    <button data-sample="scene">Scene</button>
+    <button data-sample="banner">Banner</button>
+    <button data-sample="tile">Tile</button>
+    <span style="width:12px"></span>
+    <span class="px-eyebrow" style="margin-right:4px">B from A</span>
+    <select id="xform"></select>
+    <button id="apply">Apply</button>
+    <span style="width:12px"></span>
+    <button class="ghost" id="swap">Swap</button>
+    <span style="width:12px"></span>
+    <span class="px-eyebrow" style="margin-right:4px">Engine</span>
+    <select id="engine" title="loading the WebAssembly engine…">
+      <option value="wasm">WebAssembly</option>
+      <option value="js">JavaScript</option>
+    </select>
+    <button class="rainbow" id="run">Compare</button>
+  </div>
+</section>
+
+<!-- ================================================== 2. SCREEN -->
+<section id="s-screen">
+  <div class="sec-head">
+    <h2><span class="num">02</span>The stage-1 screen</h2>
+    <span class="ref mono">§A4 — pools only, no verification, no verdict</span>
+  </div>
+  <p class="lede">At index scale most pairs are not worth a full comparison, so the screen offers a cheap one that
+     asks one cheap question: could these <em>possibly</em> share geometry? It counts correspondences
+     and stops. A pair it rejects is <b>unscreened</b> — not unrelated, and not a verdict. That
+     distinction is the whole reason the screen is safe to put in front of an index.</p>
+  <div class="grid g4" id="screenStats"></div>
+</section>
+
+<!-- ================================================== 3. VERDICT -->
+<section id="s-verdict">
+  <div class="sec-head">
+    <h2><span class="num">03</span>The verdict lattice</h2>
+    <span class="ref mono">§14 — the two scores are never averaged</span>
+  </div>
+  <p class="lede">Structure and geometry measure different things and fail differently, so they get two
+     axes rather than one weighted sum. The gridlines sit at this profile's real thresholds and the dot
+     is this pair. An outer band can certify alone, but only past a raised bar — which is why the corners
+     are not symmetric. <b>Two works from the same generator</b> land mid-left: strong structure, silent
+     geometry, capped at Suspected.</p>
+  <div class="split">
+    <div class="card">
+      <div class="lattice">
+        <span class="axis-y">geometric →</span>
+        <span class="lat-note mono" id="latNote"></span>
+        <div class="lat-grid" id="latGrid"></div>
+        <span class="axis-x">structural →</span>
+      </div>
+    </div>
+    <div>
+      <div class="card rainbow-edge" id="readout"></div>
+      <div class="card tight" style="margin-top:var(--space-3)" id="reportCard"></div>
+    </div>
+  </div>
+  <div class="grid g4" style="margin-top:var(--space-4)" id="verdictStats"></div>
+</section>
+
+<!-- ================================================== 4. GEOMETRY -->
+<section id="s-geom">
+  <div class="sec-head">
+    <h2><span class="num">04</span>Geometry</h2>
+    <span class="ref mono">§12.3 + §A1 — models, and the weak signal beneath them</span>
+  </div>
+  <p class="lede" id="corrNote"></p>
+  <div class="card tight center"><canvas id="corr"></canvas></div>
+  <div class="legend" id="corrLegend"></div>
+  <div class="grid g2" style="margin-top:var(--space-5)">
+    <div class="card">
+      <h3>Where the inliers landed</h3>
+      <p class="cap">Coverage over the profile's grid. One bright cell is a lifted element; a spread is a
+         whole-work copy. This is what R3 and R4 read when they decide whether geometry may certify alone.</p>
+      <div class="covgrid" id="covGrid"></div>
+      <p class="cap mono" id="covNote" style="margin-top:10px"></p>
+    </div>
+    <div class="card">
+      <h3>The weak signal</h3>
+      <p class="cap">When the extraction accepts no model, comparator 42 still reports the best single
+         <em>verified</em> model's inlier count — member floor kept, acceptance floor absent — and every
+         member of the null family is measured the same way. It moves the margin. It can never certify
+         alone: with no accepted model the topology stays scattered and R3 refuses.</p>
+      <div class="grid g2" style="margin-top:var(--space-3)" id="geoStats"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================== 5. CHANNELS -->
+<section id="s-chan">
+  <div class="sec-head">
+    <h2><span class="num">05</span>Channels, before and after their tables</h2>
+    <span class="ref mono">§A3 — container 2 gives every channel its own calibration</span>
+  </div>
+  <p class="lede" id="chanNote"></p>
+  <div class="card" id="chans"></div>
+</section>
+
+<!-- ================================================== 6. CALIBRATION -->
+<section id="s-cal">
+  <div class="sec-head">
+    <h2><span class="num">06</span>The calibration artefact</h2>
+    <span class="ref mono">320 bytes, one SHA-256 identity, cited by every verdict</span>
+  </div>
+  <p class="lede">A profile is the entire judgement surface in one immutable file. Nine monotone tables in
+     canonical order, the thresholds, the weights, the guards. Two channels carry the corpus's real
+     knowledge: <b>runs</b> and <b>palette</b> agree strongly on almost any two pixel-art works, so their
+     tables squash the bottom of the range hard, while <b>geometry</b> lifts its low band because a handful
+     of verified inliers is worth more than a high palette score.</p>
+  <div class="split">
+    <div><div class="grid g3" id="curves"></div></div>
+    <div>
+      <div class="card" id="profId"></div>
+      <div class="card tight" style="margin-top:var(--space-3)" id="threshTable"></div>
+      <div class="bar"><button class="primary" id="exportProfile">Download the .pcal</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================== 7. ATTACK SWEEP -->
+<section id="s-attack">
+  <div class="sec-head">
+    <h2><span class="num">07</span>Attack sweep</h2>
+    <span class="ref mono">every transform against work A, verdict beside screen</span>
+  </div>
+  <p class="lede">Runs the whole battery on whatever is in slot A, re-hashes each result, and reads every
+     one through the comparator <b>and</b> the stage-1 screen. The screen column is the one to watch: a row
+     it rejects that the comparator would have certified is a screen tuned too tight. The bottom rows
+     deserve as much attention as the top ones.</p>
+  <div class="bar" style="margin-top:0;margin-bottom:var(--space-4)">
+    <button class="primary" id="runSweep">Run the sweep</button>
+    <span class="mono" id="sweepStatus" style="font-size:var(--fs-caption);color:var(--text-tertiary)"></span>
+  </div>
+  <div class="grid g2">
+    <div class="card"><h3>Structural vs geometric</h3>
+      <canvas class="chart" id="chAttack" height="300" style="margin-top:12px"></canvas></div>
+    <div class="card tight"><div id="attackTable"></div></div>
+  </div>
+</section>
+
+<!-- ================================================== 8. WIRE -->
+<section id="s-wire">
+  <div class="sec-head">
+    <h2><span class="num">08</span>Tier 1 wire</h2>
+    <span class="ref mono">§6 — 3952 bytes, unchanged by 4.2</span>
+  </div>
+  <p class="lede">The comparator moved; the wire did not. Segmented by real byte offsets, with the section
+     table <b>on the wire</b> rather than compiled into constants — this family has already paid once for a
+     stale offset after a section was inserted. Hover a segment to isolate it in the hex below.</p>
+  <div class="ribbon" id="ribbon"></div>
+  <div class="legend" id="ribLegend"></div>
+  <div class="card tight" style="margin-top:var(--space-4)">
+    <div class="bar" style="margin-top:0;margin-bottom:var(--space-3)">
+      <span class="px-eyebrow" id="hexLabel">Whole wire</span>
+      <span style="flex:1"></span>
+      <button class="ghost" id="hexReset">Show all</button>
+    </div>
+    <div class="hexview" id="hexview"></div>
+  </div>
+</section>
+
+<!-- ================================================== 9. COST -->
+<section id="s-cost">
+  <div class="sec-head">
+    <h2><span class="num">09</span>Cost</h2>
+    <span class="ref mono">§13 — budgets, and what was actually spent</span>
+  </div>
+  <div class="grid g4" id="costStats"></div>
+  <div class="grid g4" id="engineStats" style="margin-top:var(--space-4)"></div>
+</section>
+
+<footer class="foot">
+  Runs entirely in this page. Nothing is uploaded and nothing is fetched — no network at all, fonts
+  included. Two engines are inlined: the Rust reference compiled to WebAssembly (SIMD128, used whenever the
+  browser has it), and the JavaScript one — <code>paphWire</code> (the v3 wire) and <code>paphjs</code>
+  (comparator 42, with 41 frozen beside it), from the shipped package files. They agree byte for byte, on
+  wires and on reports; section 09 checks the second claim on every pair you compare.
+  <br><br>
+  Three limits, stated rather than hidden. <b>CAL-003 is proposed, not blessed</b> — its thresholds and all
+  nine tables come from a 32-work development corpus whose labels were inferred by their author, not from
+  moderation reports. <b>A shared asset looks exactly like a partial copy</b>: two unrelated works that
+  embed the same licensed tile produce real, verified geometry, and no threshold separates that from a
+  genuine crop, because the difference is provenance and provenance is not in the pixels. And a
+  colour-inverted copy is still carried by the structural channels only: inverting flips every descriptor
+  bit <em>and</em> rotates the orientation 180°, so the steered pattern samples the other side of the
+  keypoint — measured mean Hamming distance to an inverted twin's complement is 129.9 of 256, which is
+  chance.
+</footer>
+
+</div>

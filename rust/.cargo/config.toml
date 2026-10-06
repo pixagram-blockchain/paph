@@ -1,0 +1,6 @@
+# Native builds only.  x86-64-v2 (2009 and later: SSE4.2, POPCNT) turns every
+# `count_ones` in the descriptor matchers into one instruction.  The shipped
+# WebAssembly is built by tools/build-wasm.sh, whose RUSTFLAGS replace this entirely, and
+# no target feature can change a result: every kernel is exact integer code.
+[target.'cfg(target_arch = "x86_64")']
+rustflags = ["-C", "target-cpu=x86-64-v2"]

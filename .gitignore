@@ -1,0 +1,5 @@
+rust/target/
+node_modules/
+test/.wasm/
+*.opt
+.DS_Store
