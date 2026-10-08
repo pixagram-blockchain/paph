@@ -253,7 +253,9 @@ export class XSide {
 /**
  * A PAPH-SI profile (.psi): six codebooks of 16 / 256 cells, the evidence
  * weights, the default threshold and budget, bound to one X profile.
- * `engine.siprofile()` is the shipped SI1-PROVISIONAL.
+ * `engine.siprofile()` is the shipped SI2-PROVISIONAL, bound to the shipped
+ * X2-PROVISIONAL; SI1-PROVISIONAL (1.1.0's, bound to X1) is
+ * `docs/calibration/SI1-PROVISIONAL.psi`.
  */
 export class SIProfile {
   constructor(engine, handle) {
@@ -638,6 +640,11 @@ export class Engine {
    * or an index into ['Unrelated','Related','Suspected','Copy','Identical',
    * 'Indeterminate'].  Options: `gate` (default true), `profile`, `opts`,
    * `raw` (also return the Int32Array as `.records`).
+   * The gate passes a pair only on `geo_min_corr` (8) keypoint
+   * correspondences or more, so it drops every copy of a work with fewer
+   * keypoints, and some others, that comparator 42 would certify:
+   * `gate: false`, or `xrank` under its shipped X2 profile, keeps those
+   * (docs/SEARCH.md §4).
    */
   rank(query, candidates, o) {
     o = o || {};
@@ -680,7 +687,8 @@ export class Engine {
   /**
    * A PAPH-X profile: `base` a Profile (or .pcal bytes; default the shipped
    * CAL-004-PROPOSED), `x` the X artefact bytes (default the shipped
-   * X1-PROVISIONAL bound to that base).  Check `status()`: a mismatch
+   * X2-PROVISIONAL bound to that base; 1.0.0's X1-PROVISIONAL is
+   * `docs/calibration/X1-PROVISIONAL.pxcl`).  Check `status()`: a mismatch
    * between the two makes every comparison Indeterminate.
    */
   xprofile(o) {
@@ -842,7 +850,7 @@ export class Engine {
   }
 
   /**
-   * A PAPH-SI profile from its artefact bytes, or the shipped SI1-PROVISIONAL
+   * A PAPH-SI profile from its artefact bytes, or the shipped SI2-PROVISIONAL
    * without them.  Its `xid()` names the X profile it was fitted against:
    * signatures and queries refuse sides prepared under any other.
    */

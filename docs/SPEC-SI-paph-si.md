@@ -1,9 +1,12 @@
 # PAPH-SI — the screening index
 
-`@pixagram/paph-x` 1.1.0 · SI ABI 1 · feature derivation 1 · profile **SI1-PROVISIONAL**
-(`ca0ff1047b03cadd…`, 5,334 bytes), bound to X1-PROVISIONAL (`b96040d888b21e28…`). The wire (3),
-comparator 42, CAL-004-PROPOSED and PAPH-X do not move: the 3,160-case equivalence digest is
-byte-identical.
+`@pixagram/paph-x` 1.1.1 · SI ABI 1 · feature derivation 1 · profile **SI2-PROVISIONAL**
+(`abfef6f814c4915b…`, 5,334 bytes), bound to X2-PROVISIONAL (`27993afaaca76d11…`). SI2 is 1.1.0's
+SI1-PROVISIONAL (`ca0ff1047b03cadd…`) bound to the X profile 1.1.1 ships: the same fit, codebooks,
+weights, threshold and budget — X2 changes the route's global words, not the MinHash lanes SI
+bands, so under X2 SI2 signs every work with the bytes SI1 signs it with under X1. SI1 stays,
+bound to X1 (`docs/calibration/SI1-PROVISIONAL.psi`). The wire (3), comparator 42 and
+CAL-004-PROPOSED do not move: the 3,160-case equivalence digest is byte-identical.
 
 PAPH-SI answers the one question a search engine asks before any comparison: *given one new
 work, which of the N stored works are worth handing to XRank?* — without reading the others.
@@ -11,12 +14,15 @@ It is the "product-quantized screening index" of the design note this document a
 built, measured, and corrected where the measurements disagreed with the note.
 
 The tables of §3–§5 and §9.1–§9.4 were printed by `rust/target/release/sibench fit` and
-`sibench eval` (`npm run bench:si`), the counts of §11 by `sibench route` and `sibench lost`, on
-one core of a shared two-core container; the full output of those runs is
-`docs/calibration/SI1-PROVISIONAL.log`. None of them is a claim beyond that corpus and that
-machine. §9.5 extrapolates from them, under assumptions it states. §9.6 lists the measurements
-of the Python prototype that chose between design alternatives before the Rust implementation
-existed; the shipped harness does not reproduce them.
+`sibench eval` (`npm run bench:si` runs the latter), §3.3's G3 column and second partition and
+the counts of §11 by `sibench route` and `sibench lost`, on one core of a shared two-core
+container; the full output of those runs is `docs/calibration/X2-PROVISIONAL.log` (1.1.1, X2 and
+SI2). 1.1.0's runs, under X1 and SI1, are `docs/calibration/SI1-PROVISIONAL.log`: the same SI
+tables, while what X2 changes — the route and gate counts of §11, XRank's column of §9.3 — and
+the timings differ. None of them is a claim beyond that corpus and that machine. §9.5
+extrapolates from them, under assumptions it states. §9.6 lists the measurements of the Python
+prototype that chose between design alternatives before the Rust implementation existed; the
+shipped harness does not reproduce them.
 
 **§0 is the answer, §2 the note ruling by ruling, §7 how to run it.**
 
@@ -47,9 +53,10 @@ existed; the shipped harness does not reproduce them.
    *before* the exact-key postings; measured, SI alone finds 13 % of pasted copies and the keys
    find 100 %, while the queries the keys miss — channel swaps, crops, re-dithers, resamples —
    are mostly found by SI. Their union nominates **99.8 %** of comparator-42 copies at
-   N = 4,000 (107.4 candidates per query), and XRank returns `Copy` on **99.5 %** of them end to
-   end (the gap is XRank's gate, §11). At N = 104,000 the union holds **98.8 %** with no budget
-   on SI's pool, and 97.0 % at SI1's default budget of 2,000 candidates (§9.4).
+   N = 4,000 (107.4 candidates per query), and XRank returns `Copy` on **99.8 %** of them end to
+   end — all it was shown (1.1.0's X1 gate lost a structure-only copy there: 99.5 %, §11). At
+   N = 104,000 the union holds **98.8 %** with no budget on SI's pool, and 97.0 % at the
+   profile's default budget of 2,000 candidates (§9.4).
 4. **The 16 × 16 × 16 estimate.** A 256-cell family behaves like 107–192 cells on this corpus
    (skew), a random pair shares a fine cell with probability 1/63 to 1/149 (not 1/256), and the
    families are correlated. A match in the query's coarse cell outside its probe cells weighs
@@ -58,18 +65,22 @@ existed; the shipped harness does not reproduce them.
    recall; the measured curve is §9.2.
 5. **Scale.** SI's share of the population is constant (1.44–1.45 % at θ = 2 from 4k to 104k
    works) and so is its recall (91.9 %); the exact keys' top-32 recall decays slowly
-   (98.1 % → 95.2 %). At millions of works the cost is not the index (0.54 ms per query at 104k)
-   but verification: XRank spends 0.15 ms (median query) to 0.59 ms (negatives, mean) on each
+   (98.1 % → 95.2 %). At millions of works the cost is not the index (0.52 ms per query at 104k)
+   but verification: XRank spends 0.20 ms (median query) to 0.62 ms (negatives, mean) on each
    *nominated* candidate and goes past its cheap screen on half of them. §9.5 gives the budget
    arithmetic.
-6. **Three findings about the shipped engine.** XRoute's G0 (DCT) word equals its original's on
-   87 % of D4 copies when both sides of the canvas are multiples of 16 and on 41 % otherwise
-   (§3.3). The X1 route bars put 49 of 976 comparator-42 copies of this corpus in the route's
-   Reject class, so the route class alone is not a filter (§11). And XRank's gate drops 3 of
-   those 976 pairs (6 of 1,952 queries): a channel swap or a palette shuffle moves the
-   keypoints, XRank's anchor-tier pools come back empty, and comparator 42 certifies the pair on
-   structure alone. One of the three is in the eval split — the 0.3-point gap between
-   nomination and verdict in §9.3.
+6. **Three findings about the engine, addressed in 1.1.1** (profile X2, docs/PAPH-X.md §2).
+   XRoute's G0 (DCT) word equals its original's on 87 % of D4 copies when both sides of the
+   canvas are multiples of 16 and on 41 % otherwise (§3.3) — a limit of the wire's DCT section,
+   not of the word, documented; two of the route's other words had invariance defects of their
+   own, fixed in route derivation 2. The X1 route bars put 49 of 976 comparator-42 copies of this
+   corpus in the route's Reject class and the screen dropped two of them; X2 keeps the bars (42
+   copies in the class) but drops nothing on the class alone. And XRank's gate dropped 3 of the
+   976 pairs (6 of 1,952 queries): recolours of works with 0–3 keypoints, so the anchor-tier
+   pools are empty, which the recolour moved out of the route's Fast class, and which comparator
+   42 certifies on structure alone. Under X2 the structural door keeps two of them and route
+   derivation 2 the third. Comparator 42's own gated rank, unchanged, screens out 178 of the
+   976, 164 of them pairs with a side of fewer than 8 keypoints (§11): verify with XRank.
 
 ---
 
@@ -107,7 +118,7 @@ profile derive the same bytes.
 | 11 | the name PAPH-SI | **kept** (PAPH Screening Index) | — |
 | 12 | transformation-stable features before clustering | **accepted, measured**: the stability matrix of §3.2 is that test | §3.2 |
 | 13 | a one-day routing cache keyed by index generation | **the generation is built** (`SIIndex.generation`, part of any cache key); the cache itself is left to the host — a new upload never repeats a query, re-checks and appeals do | §7.4 |
-| 14 | 18 min / 256 ≈ 4.2 s | **arithmetic right**, premise incomplete: at 10M works SI's 1.45 % pool is 145k candidates, and a nominated candidate costs XRank 0.15–0.59 ms | §9.5 |
+| 14 | 18 min / 256 ≈ 4.2 s | **arithmetic right**, premise incomplete: at 10M works SI's 1.45 % pool is 145k candidates, and a nominated candidate costs XRank 0.20–0.62 ms | §9.5 |
 | 15 | target recall ≥ 99 %, reduction ≥ 100× | **the recall half is met by the union** with no budget on SI up to 64k works (99.0 %, at 37× to 64× of the population), and at the default budget B = 2,000 up to 16k (99.4 %); **no measured configuration meets both** — SI alone gives 90.5 % at 98× | §9.2–§9.4 |
 | 16 | the same index serves image search | **limited** — every family is blind to colour by design and to style by construction; "visually related" belongs to the embedding channel the search engine already has | — |
 
@@ -174,28 +185,46 @@ SI.
 Where the matrix falls short of §3.1's design column, two causes are visible upstream of SI, in
 how the front end normalises a work. One is measured: the 16 × 16 thumbnail's grid commutes with
 D4 only on some canvas sizes (§3.3) — it costs XRoute's G0 word most, and TONE (whose three
-brightness readings come from that thumbnail) a few points under the quarter turns. The other is
+brightness readings come from that thumbnail) a few points under rot90 and rot180. The other is
 read from the code, not measured pair by pair: the matte fold breaks ties between equally
 frequent border colours by colour key, which the complement and recolours reorder, so some
 recoloured copies are normalised with a different matte. Neither explains SHAPE, SIL and KPGEO
-under mirror and the quarter turns (39–77 % exact, 75–96 % probed), which does not depend on the
-canvas size (§3.3), nor LOCAL and BAND under the complement (8 % and 3 %): those causes are not
-established here.
+under mirror, rot90 and rot180 (39–77 % exact, 75–96 % probed), nor LOCAL and BAND under the
+complement (8 % and 3 %). The first three hold under transpose (96–100 % exact), the one
+symmetry here that leaves the top-left corner where it was, which points at rounding anchored
+to that corner; §3.3 rules out the two sampling grids it tests, the thumbnail's and the shapes
+section's (the route's region word, read from the same section as SHAPE, follows the latter;
+the families follow neither). The candidates are read from the code, not measured: SHAPE takes
+its regions' classes in the section's order, which breaks a tie in area by position; SHAPE and
+SIL trace their radial profiles from a centroid rounded down, along rays rounded half up; SIL's
+occupancy code samples an 8 × 8 grid laid from its bounding box's top-left corner; KPGEO reads
+keypoints detected on a pyramid whose blocks are laid from the image's. Which of them costs
+what is not established here.
 
 ### 3.3 Sampling grids, and what was left out
 
-| canvas | pairs | G0 word | runs | tone | pal | shape | sil | kpgeo |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| both sides multiples of 16 | 180 | 87 % | 100 % | 100 % | 100 % | 74 % | 74 % | 61 % |
-| other sizes | 300 | 41 % | 100 % | 98 % | 100 % | 80 % | 72 % | 56 % |
+| canvas | pairs | G0 word | G3 word | runs | tone | pal | shape | sil | kpgeo |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| both sides multiples of 16 | 180 | 87 % | 83 % | 100 % | 100 % | 100 % | 74 % | 74 % | 61 % |
+| other sizes | 300 | 41 % | 84 % | 100 % | 98 % | 100 % | 80 % | 72 % | 56 % |
+| long side ≤ 128 px | 220 | 65 % | 99 % | 100 % | 100 % | 100 % | 76 % | 76 % | 61 % |
+| long side > 128 px | 260 | 52 % | 71 % | 100 % | 98 % | 100 % | 79 % | 70 % | 57 % |
 
 The share of D4 copies (mirror, rot90, rot180, transpose; every base) whose reading equals the
-original's exactly. G0 — XRoute's DCT word, built to be D4- and complement-invariant — holds on
-87 % of copies of canvases whose sides are multiples of 16 and on 41 % of the others: the
-thumbnail's cell edges sit at ⌊i·w/16⌋, which a mirror or a quarter turn moves by a pixel
-otherwise, and the median-split magnitude bits flip under that shift. A family that should be
-D4-invariant and is not on most real canvas sizes cannot address copies, so the DCT section is
-not a PAPH-SI family. SHAPE, SIL and KPGEO show no such dependence on the canvas size.
+original's exactly, under two partitions of the same 120 bases: the DCT thumbnail's (both sides
+multiples of 16, or not) and the shapes section's (long side at most 128 px, where that
+section's grid is the pixel grid, or more). `sibench route` prints both partitions; `sibench
+eval` prints the first, without G3. SIL and KPGEO are read over the pairs where the family is
+present on both sides: 100 / 204 / 144 / 160 and 92 / 176 / 61 / 207 of them, row by row.
+G0 — XRoute's DCT word, built to be D4- and complement-invariant — holds on 87 % of copies
+of canvases whose sides are multiples of 16 and on 41 % of the others: the thumbnail's cell edges
+sit at ⌊i·w/16⌋, which a mirror or a quarter turn moves by a pixel otherwise, and the
+median-split magnitude bits flip under that shift. A family that should be D4-invariant and is
+not on most real canvas sizes cannot address copies, so the DCT section is not a PAPH-SI family.
+G3 — XRoute's region word under route derivation 2, read from the shapes section — follows that
+section's grid instead (⌈w / c⌉ × ⌈h / c⌉ cells with c = ⌈long side / 128⌉, edges rounded down
+from the top-left corner): 217 of 220 at 128 px or less, 71 % above. SHAPE, SIL and KPGEO follow
+neither partition, so neither of these two grids explains their shortfall (§3.2).
 
 Also left out: the diagonal run histogram (a mirror sends the main diagonal to the
 anti-diagonal, which the wire does not hold), and — by rule, not by measurement — the colour
@@ -286,8 +315,8 @@ The query's own cell first; then every cell reached by moving one or more axes o
 up across an edge, cheapest first. Moving axis *k* costs `⌊d_k · 1024 / σ_k⌋²` — `d_k` the
 distance from the query's projection to the edge crossed, capped at 2²⁰ before squaring, `σ_k`
 the axis' transform noise (the RMS displacement of a copy along the axis over √2, measured on
-the fitting pairs) — and a move of several axes costs the sum. Ties go to the lower cell. SI1
-uses four probes: the prototype found 8 and 16 no better at equal pool share (§9.6), and each
+the fitting pairs) — and a move of several axes costs the sum. Ties go to the lower cell. The
+profile uses four probes: the prototype found 8 and 16 no better at equal pool share (§9.6), and each
 probe reads one more cell's posting list.
 
 ### 5.4 Weights, the score, and admission
@@ -319,7 +348,7 @@ most B of them (`code::scan` is the reference; the in-memory index and the SQL s
 held equal to it by test).
 
 **θ** is fitted, not chosen: the score that 1 % of the fit's random pairs reach, floored at 1
-(net evidence for a copy). For SI1 that is θ = 2. On the eval split θ = 2 admits 1.44 % of the
+(net evidence for a copy). For SI1 and SI2 that is θ = 2. On the eval split θ = 2 admits 1.44 % of the
 population; a 1 % pool needs θ ≈ 32 (§9.2). **B** defaults to 2,000. Raising θ trades recall for
 reduction along the curve of §9.2; a budget cuts the tail without changing the order.
 
@@ -327,14 +356,16 @@ reduction along the curve of §9.2; a budget cuts the tail without changing the 
 
 ## 6. The profile (rust/src/x/si/profile.rs, fit.rs)
 
-`docs/calibration/SI1-PROVISIONAL.psi`, embedded in the crate (`SiProfile::si1()`), decoded and
-checked on load; its SHA-256 is its identity. Layout, little-endian:
+`docs/calibration/SI2-PROVISIONAL.psi` (the shipped default, `SiProfile::si2()` and
+`SiProfile::shipped()`, bound to X2) and `docs/calibration/SI1-PROVISIONAL.psi`
+(`SiProfile::si1()`, 1.1.0's, bound to X1), both embedded in the crate, decoded and checked on
+load; a profile's SHA-256 is its identity. Layout, little-endian:
 
 | bytes | field |
 |---|---|
 | 4 | magic `PXSI` |
 | 2 + 2 | profile version (1), feature derivation version (1) |
-| 16 | name (`SI1-PROVISIONAL`, zero-padded) |
+| 16 | name (`SI2-PROVISIONAL`, zero-padded) |
 | 32 | identity of the X profile whose route lanes are banded |
 | 1 + 1 + 1 + 1 | axes (4), bins (4), probes (4), families (6) |
 | per family | dims `u16`; mean `i32 × d`; projection `i32 × 4d`; edges `i64 × 12`; noise `i64 × 4`; weights `i32 × 3` |
@@ -351,9 +382,10 @@ profile refuses sides prepared under another (signatures and queries return −2
 
 **Fitting** (`sibench fit`, fit.rs) is offline and may use floating point: what it writes is
 integers, and nodes agree on the artefact's identity, not on how it was fitted. It is
-deterministic all the same: re-running `sibench fit` on the same corpus reproduces SI1 byte for
-byte (checked with `cmp`). SI1 was fitted on the corpus's fitting split (4,000 background works,
-2,432 noise pairs, 1,958 evidence pairs) in 0.07 s. The codebooks come from the background
+deterministic all the same: re-running `sibench fit` on the same corpus reproduces SI2 byte for
+byte, and `sibench fit --x1` SI1 (checked with `cmp`). Both were fitted on the corpus's fitting
+split (4,000 background works, 2,432 noise pairs, 1,958 evidence pairs) in 0.07 s, with the same
+seed; they differ in the name and the bound X profile only. The codebooks come from the background
 population alone; the noise scales and the weights need copy pairs — so a production fit takes
 its axes and edges from the stored works' wires and its noise and weights from transformed
 copies of a sample of them.
@@ -371,7 +403,7 @@ and the count of equal band keys; then adds the none-weights of the families bot
 (a 256-entry table on the presence byte), admits by θ and selects the best B with a partial
 sort. Removal tombstones a slot; the lists are compacted when more than a quarter of the entries
 they hold belong to removed slots. 45.5 posting entries per work; at 104,000 works a query reads
-20,140 entries in 0.54 ms.
+20,140 entries in 0.52 ms.
 
 ### 7.2 SQL — SQLite, Cloudflare D1 (`SI_SQL` and `siSqlParams` in wasm/paph.js)
 
@@ -439,7 +471,7 @@ nomination; SI's is a share of the population, cut by the budget.
   re-checks do.
 * **Re-deriving.** A profile change (a new `.psi`, a new feature derivation) re-derives every
   signature from the stored wires — `paph_sisig_wire` builds it from Tier 1 + Tier 2 without the
-  bucket index, 105 µs a work natively, parse included — and swaps the postings. Store the
+  bucket index, 106 µs a work natively, parse included — and swaps the postings. Store the
   profile id with each row (`si_profile`).
 * **Deletion.** Delete the work's postings and its `si_works` row; in memory, `remove(slot)`.
 * **Order of arrival.** As with the keys: index a work after querying with it, so each pair is
@@ -449,7 +481,8 @@ nomination; SI's is a share of the population, cut by the budget.
 
 ## 8. API
 
-Rust (`paph::x::si`): `SiProfile::si1()`, `SiSig::{build, from_prepared, to_bytes, from_bytes}`,
+Rust (`paph::x::si`): `SiProfile::{shipped, si2, si1}` (`shipped()` is SI2),
+`SiSig::{build, from_prepared, to_bytes, from_bytes}`,
 `SiQuery::{new, from_prepared, score, touches, levels}`, `scan`, `SiIndex::{add, remove, query,
 generation}`, `fit::fit`. C ABI: docs/WASM-ABI.md, *PAPH-SI (SI ABI 1)*. JavaScript:
 
@@ -472,7 +505,7 @@ const keys = paph.indexKeys(fp, { query: true });       // the exact-key half of
 ```
 
 `npm run bench:si` runs the harness (`rust/sibench.sh`; `--big` adds the scaling table, `--fit`
-re-fits SI1); `npm run test:si` the cross-engine and SQL checks.
+re-fits SI2); `npm run test:si` the cross-engine and SQL checks.
 
 ---
 
@@ -488,7 +521,7 @@ bijection of the colours), up2, up3, down70 and resample90 (box filters), up150 
 crop80, crop67, corner50, paste (into a host twice the size), shift1, dither, matte. Then 8,000
 same-style distractors from the same generators with other seeds — the hardest negatives this
 corpus has — and, for the scaling table, 100,000 more (108,000 in all). Splits: alternate blocks
-of bases (64 bases) and the first 4,000 distractors fit SI1; the other blocks (56 bases) and the
+of bases (64 bases) and the first 4,000 distractors fit SI1 and SI2; the other blocks (56 bases) and the
 other 4,000 distractors evaluate, so every kind of base is on both sides. Recall is counted on
 the eval pairs comparator 42 itself calls Copy or Identical (416 pairs, 832 queries in both
 arrival orders): a nominator need not find what the verifier cannot confirm. Over all 120
@@ -509,7 +542,7 @@ Eval population 4,000 distractors. *Pool*: the mean share of the population a qu
 | votes: ≥ 3 of 8 | 1.067 % | 94× | 90.3 % | 100 % | 100 % | 95 % | 44 % | 72 % | 8 % | 93 % |
 | votes: ≥ 4 of 8 | 0.281 % | 356× | 83.4 % | 100 % | 100 % | 82 % | 19 % | 44 % | 0 % | 84 % |
 | SI score ≥ −10 | 2.008 % | 50× | 92.9 % | 100 % | 100 % | 97 % | 62 % | 88 % | 16 % | 94 % |
-| SI score ≥ 2 (SI1 default) | 1.435 % | 70× | 91.9 % | 100 % | 100 % | 96 % | 62 % | 84 % | 13 % | 93 % |
+| SI score ≥ 2 (the default) | 1.435 % | 70× | 91.9 % | 100 % | 100 % | 96 % | 62 % | 84 % | 13 % | 93 % |
 | SI score ≥ 32 | 1.025 % | 98× | 90.5 % | 100 % | 100 % | 94 % | 44 % | 79 % | 5 % | 92 % |
 | SI score ≥ 64 | 0.523 % | 191× | 87.9 % | 100 % | 100 % | 91 % | 31 % | 71 % | 3 % | 87 % |
 | SI score ≥ 117 | 0.201 % | 499× | 83.2 % | 100 % | 100 % | 82 % | 0 % | 44 % | 0 % | 85 % |
@@ -532,7 +565,7 @@ XRank under the safe policy, copy scope, on the union.
 | exact keys alone | 58.1 | 98.1 % |
 | SI alone | 57.4 | 91.9 % |
 | SI ∪ keys | 107.4 | 99.8 % |
-| SI ∪ keys → XRank says Copy | 107.4 | 99.5 % of 832 |
+| SI ∪ keys → XRank says Copy | 107.4 | 99.8 % of 832 (X1: 99.5 %) |
 
 | transform | pairs | keys | SI | SI ∪ keys | → XRank Copy |
 |---|---:|---:|---:|---:|---:|
@@ -542,7 +575,7 @@ XRank under the safe policy, copy scope, on the union.
 | transpose | 31 | 100 % | 100 % | 100 % | 100 % |
 | invert | 3 | 100 % | 100 % | 100 % | 100 % |
 | recolour | 32 | 100 % | 92 % | 100 % | 100 % |
-| chswap | 29 | 93 % | 98 % | 100 % | 97 % |
+| chswap | 29 | 93 % | 98 % | 100 % | 100 % (X1: 97 %) |
 | palshuffle | 6 | 100 % | 100 % | 100 % | 100 % |
 | up2 | 40 | 100 % | 100 % | 100 % | 100 % |
 | up3 | 40 | 100 % | 100 % | 100 % | 100 % |
@@ -556,10 +589,14 @@ XRank under the safe policy, copy scope, on the union.
 | dither | 9 | 83 % | 61 % | 94 % | 94 % |
 | matte | 30 | 100 % | 93 % | 100 % | 100 % |
 
-XRank per query: p50 12.9 ms, p95 457 ms. Per candidate, per query: p50 152 µs, mean 370 µs,
-p95 1,548 µs; on every sixth query's pool without its target (13,976 candidates), 588 µs a
-candidate. XRank went past its route and anchor-tier screen on 52.7 % of the candidates it was
+XRank per query: p50 17.5 ms, p95 461 ms. Per candidate, per query: p50 196 µs, mean 399 µs,
+p95 1,539 µs; on every sixth query's pool without its target (13,976 candidates), 616 µs a
+candidate. XRank went past its route and anchor-tier screen on 52.9 % of the candidates it was
 shown — nominated candidates are, by construction, the works that look most like the query.
+Under X1 (`sibench eval --x1`, the same session): 99.5 % end to end, 153 / 374 / 593 µs, and
+52.7 % of candidates past the screen. The difference is X2's two changes together — the
+structural door, asked on every candidate the gate would drop, and route derivation 2, which
+moves some candidates between route classes; no run here separates them.
 
 XRank read Copy on 92 of the ~89,000 (query, distractor) pairs it was shown, all of them a
 noise-field `work` base against a `work` distractor: that generator draws every work over one
@@ -572,15 +609,15 @@ nomination: the index only decides which pairs XRank sees.
 The same 832 queries against growing populations (the eval distractors, then the extra ones).
 The key timings are in-memory sorted arrays, top-32 selection included, not SQL.
 
-| population | SI pool | SI pool share | SI recall | keys@32 recall | SI ∪ keys, no budget | SI top-250 ∪ keys | top-1,000 ∪ keys | top-2,000 ∪ keys (SI1's default B) | top-4,000 ∪ keys | top-16,000 ∪ keys | SI postings read / query | SI query p50 | keys query p50 |
+| population | SI pool | SI pool share | SI recall | keys@32 recall | SI ∪ keys, no budget | SI top-250 ∪ keys | top-1,000 ∪ keys | top-2,000 ∪ keys (the default B) | top-4,000 ∪ keys | top-16,000 ∪ keys | SI postings read / query | SI query p50 | keys query p50 |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 4,000 | 57 | 1.435 % | 91.9 % | 98.1 % | 99.8 % | 99.6 % | 99.8 % | 99.8 % | 99.8 % | 99.8 % | 778 | 18 µs | 704 µs |
-| 16,000 | 231 | 1.442 % | 91.9 % | 96.8 % | 99.4 % | 97.7 % | 99.3 % | 99.4 % | 99.4 % | 99.4 % | 3,093 | 68 µs | 1,536 µs |
-| 64,000 | 929 | 1.452 % | 91.9 % | 95.7 % | 99.0 % | 96.4 % | 97.1 % | 97.8 % | 98.9 % | 99.0 % | 12,380 | 297 µs | 3,386 µs |
-| 104,000 | 1,509 | 1.451 % | 91.9 % | 95.2 % | 98.8 % | 95.9 % | 96.5 % | 97.0 % | 97.8 % | 98.8 % | 20,140 | 541 µs | 4,029 µs |
+| 4,000 | 57 | 1.435 % | 91.9 % | 98.1 % | 99.8 % | 99.6 % | 99.8 % | 99.8 % | 99.8 % | 99.8 % | 778 | 17 µs | 655 µs |
+| 16,000 | 231 | 1.442 % | 91.9 % | 96.8 % | 99.4 % | 97.7 % | 99.3 % | 99.4 % | 99.4 % | 99.4 % | 3,093 | 69 µs | 1,639 µs |
+| 64,000 | 929 | 1.452 % | 91.9 % | 95.7 % | 99.0 % | 96.4 % | 97.1 % | 97.8 % | 98.9 % | 99.0 % | 12,380 | 286 µs | 3,319 µs |
+| 104,000 | 1,509 | 1.451 % | 91.9 % | 95.2 % | 98.8 % | 95.9 % | 96.5 % | 97.0 % | 97.8 % | 98.8 % | 20,140 | 517 µs | 4,037 µs |
 
 SI is scale-free: its share and its recall do not move, so its pool grows with N, and a budget
-turns that into a recall cost (the top-B columns). At SI1's default B = 2,000 the union gives up
+turns that into a recall cost (the top-B columns). At the default B = 2,000 the union gives up
 1.8 points to no budget at 104k: the average pool is 1,509 there, and the larger ones are cut.
 The exact keys hold a fixed-size nomination whose recall decays by about 0.6 points per doubling
 of N here; the union without a budget decays by about a third of that (0.2 points per
@@ -588,14 +625,14 @@ doubling).
 
 ### 9.5 What a query costs at scale
 
-Measured per query (native, one core): the SI index 0.54 ms at 104k works, linear in N (0.19
-postings read per stored work); the key nomination 4.0 ms in memory at 104k; XRank 0.15 ms (the
-median query) to 0.59 ms (negatives, on average) per nominated candidate (§9.3).
+Measured per query (native, one core): the SI index 0.52 ms at 104k works, linear in N (0.19
+postings read per stored work); the key nomination 4.0 ms in memory at 104k; XRank 0.20 ms (the
+median query) to 0.62 ms (negatives, on average) per nominated candidate under X2 (§9.3).
 
 Extrapolated to N = 10 million, under three stated assumptions: (a) recall decays log-linearly
 in N at the slope measured from 4k to 104k — the lower figure uses the steeper last segment
 (64k → 104k); (b) SI's share stays at the measured 1.45 %; (c) XRank's per-candidate cost stays
-at 0.15–0.59 ms. None of the three is measured beyond 104k. The shards are shards by work: each
+at 0.20–0.62 ms. None of the three is measured beyond 104k. The shards are shards by work: each
 a complete index (SI and keys) over its own 200k works — about what one 10 GB Durable Object
 holds (docs/SEARCH.md §6) — with every query sent to all of them and the shards running in
 parallel. (SEARCH.md's other option, sharding the postings by key range, keeps one global
@@ -603,13 +640,13 @@ nomination and the first two rows.)
 
 | deployment | SI candidates | key candidates | verified per query | XRank CPU | recall, extrapolated |
 |---|---:|---:|---:|---:|---:|
-| one index, θ = 2, no budget | 145,000 | 64 | ≈ 145,000 | 22–85 s | ≈ 97 % |
-| one index, budget 1,000 | 1,000 | 64 | ≈ 1,060 | 0.16–0.62 s | ≈ 91–92 % |
-| 50 shards of 200k, θ = 2, no budget | 2,900 per shard | 64 per shard | ≈ 148,000 in all | 0.45–1.74 s per shard | ≈ 98.5 % |
-| 50 shards of 200k, budget 1,000 | 1,000 per shard | 64 per shard | ≈ 53,000 in all | 0.16–0.62 s per shard | ≈ 96 % |
+| one index, θ = 2, no budget | 145,000 | 64 | ≈ 145,000 | 28–89 s | ≈ 97 % |
+| one index, budget 1,000 | 1,000 | 64 | ≈ 1,060 | 0.21–0.65 s | ≈ 91–92 % |
+| 50 shards of 200k, θ = 2, no budget | 2,900 per shard | 64 per shard | ≈ 148,000 in all | 0.58–1.83 s per shard | ≈ 98.5 % |
+| 50 shards of 200k, budget 1,000 | 1,000 per shard | 64 per shard | ≈ 53,000 in all | 0.21–0.65 s per shard | ≈ 96 % |
 
-SI1's default B = 2,000 sits between the two kinds of row: twice the budget rows' XRank time
-(0.31–1.21 s per index or shard), and a recall between theirs and the unbudgeted rows'.
+The default B = 2,000 sits between the two kinds of row: twice the budget rows' XRank time
+(0.40–1.27 s per index or shard), and a recall between theirs and the unbudgeted rows'.
 
 So the note's arithmetic (§14: 18 min ÷ 256 ≈ 4.2 s) is right about the index and silent about
 the verifier: what decides whether a 10-million-work query takes 100 ms or a minute is how many
@@ -645,60 +682,79 @@ crops (0.82–0.98; the corner crop 1.01–1.04).
 ## 10. Verification
 
 ```bash
-cargo test --release --manifest-path rust/Cargo.toml   # 109 tests: 102 of 1.0.0 + 7 of PAPH-SI
+cargo test --release --manifest-path rust/Cargo.toml   # 113 tests: 102 of 1.0.0, 7 of PAPH-SI, 4 of 1.1.1
 bash rust/check.sh                                     # equivalence digest: 3,160 cases, byte-identical
-npm run test:si                                        # 1,417 checks: native = SIMD128 = baseline for signatures,
+npm run test:si                                        # 1,420 checks: native = SIMD128 = baseline for signatures,
                                                        # keys, plans, scores and index answers; index =
                                                        # definition; SQL = index; through removals
-npm run bench:si -- --big                              # this document's tables
+npm run bench:si -- --big                              # sibench eval --big: §3, §4, §9.1–§9.4 (-- --fit first: §5)
+rust/target/release/sibench route|lost [--x1]          # §3.3's G3 column and second partition, §11's counts
 ```
 
 The PAPH-SI unit tests: the coarse cell is the exact median-bit parent of sixteen fine cells;
 signatures round-trip; `isqrt128` is exact; Jacobi diagonalises; the index equals the scan slot
 for slot and score for score through adds, removals and compactions at five thresholds and
 budgets (an empty budget and no budget among them), and its entry accounting holds; SI1
-round-trips, is bound to X1 and refuses tampering; on real wires, a signature from the wires
-alone equals the one from an X side, mirrored, rotated and 2×-upscaled copies clear the default
+round-trips, is bound to X1 and refuses tampering, and SI2 is SI1 bound to X2; on real wires, a
+signature from the wires alone equals the one from an X side, mirrored, rotated and 2×-upscaled
+copies clear the default
 threshold (30 of 30 on the logged run; the test requires 27) and unrelated works do not (0 of 90;
-it allows 9). Separately, re-running the fit reproduces SI1 byte for byte.
+it allows 9). `npm run test:si` also checks that SI1 under X1 and SI2 under X2 sign every work
+of its corpus alike and that SI1 refuses a side prepared under X2. Separately, re-running the
+fit reproduces SI2 (and, with `--x1`, SI1) byte for byte.
 
 ---
 
 ## 11. Known gaps and next steps
 
-* **No real corpus.** SI1 is fitted and measured on the synthetic corpus only, and its name says
+* **No real corpus.** SI2 (SI1's fit) is fitted and measured on the synthetic corpus only, and its name says
   PROVISIONAL. Synthetic same-style art is homogeneous — the effective cells of §4.3 are a floor,
   not an estimate — and every threshold here must be re-derived on Pixagram's own works before
   any operating point is trusted. `sibench fit` takes a corpus file in the format
   `sibench corpus` writes.
-* **The XRoute class is not a filter.** On this corpus the X1 route bars (local 6 / band 3 /
-  global 190, calibrated on the 344-work xbench corpus) put 49 of 976 comparator-42 Copy pairs in
-  the route's Reject class (`sibench route`): corner50 4 of 5, resample90 8 of 15, dither 8 of 20,
-  paste 9 of 40, chswap 7 of 72, crop80 4 of 47, recolour 3 of 75, up150 2 of 6, palshuffle 2 of
-  20, crop67 1 of 25, matte 1 of 67. XRank does not drop a candidate on the route class alone:
-  its Stage B runs the anchor-tier sparse screen on every non-Fast candidate, and drops a route
-  Reject only when that screen's pool is near empty too (at most X1's `defer_pool_max`, 3). A
-  host must not drop candidates on the route class alone either, and X1's bars want the real
-  corpus.
-* **XRank's gate loses three pairs.** Shown the target alone, XRank (`gate: true`) does not
-  read Copy on 6 of 1,952 comparator-42 Copy queries — three pairs, both arrival orders
-  (`sibench lost`): two channel-swapped pairs and one palette-shuffled pair. On all three,
-  XRank's anchor-tier pools are empty under both hypotheses, and comparator 42 certifies the
-  pair on structure alone ("structural only — no geometric corroboration": structural
-  6,059–6,279, geometry evidence 0, no inliers). A recolour that scrambles luminance moves the
-  keypoints, and the keypoint screen is all the gate reads besides the route: two of the pairs
-  leave at its first exit (route Reject, pool ≤ 3), the third — which the route defers — at its
-  second (pools still below `geo_min_corr`, 8, after the expansion tiers). Only one of the three
-  (a channel swap) is in the eval split: it is the 0.3-point gap between nomination and verdict
-  in §9.3. `gate: false` runs the cascade on them; the cheaper fix is for both exits to ask the
-  structural channels before dropping a pair whose pools are empty, at a cost per candidate the
-  real corpus has to price. This is PAPH-X's to settle.
+* **The XRoute class is a sketch, not a filter.** On this corpus X2's route bars — X1's,
+  local 6 / band 3 / global 190, calibrated on the 344-work xbench corpus — put 42 of 976
+  comparator-42 Copy pairs in the route's Reject class (`sibench route`; 49 under X1's
+  derivation): paste 9 of 40, dither 8 of 20, chswap 5 of 72, crop80 5 of 47, resample90 4 of 15,
+  corner50 4 of 5, recolour 3 of 75, palshuffle 2 of 20, up150 1 of 6, crop67 1 of 25. Bars that
+  keep every copy out of the class (local 1 / band 3 / global 164) would leave 55 % of unrelated
+  pairs in it instead of 93 %, so 1.1.1 keeps the bars and stops acting on the class alone
+  instead: under X2 neither the pair screen nor XRank's gate drops a route Reject until the
+  structural door has shut — an exact bound, so the pair cannot be a structure-only Copy — and
+  the pair screen rejects none of the 976 copies (X1: 2). A host must not drop candidates on the
+  route class alone either, and the bars want the real corpus.
+* **XRank's gate lost three pairs under X1; X2 keeps them.** Shown the target alone, XRank under
+  X1 (`gate: true`) did not read Copy on 6 of 1,952 comparator-42 Copy queries — three pairs,
+  both arrival orders (`sibench lost --x1`): two channel-swapped pairs and one palette-shuffled
+  pair. All three are works with 0–3 keypoints a side, so the anchor-tier pools are empty under
+  both hypotheses, and comparator 42 certifies the pair on structure alone ("structural only —
+  no geometric corroboration": structural 6,059–6,279, geometry evidence 0, no inliers). XRank
+  keeps such copies when its route reads them as Fast, which it does not gate; the recolour moved
+  these three out of that class, and X1's gate read nothing else: two left at its first exit
+  (route Reject, pool ≤ 3), the third (route Defer) at its second (pools still below
+  `geo_min_corr`, 8, after the expansion tiers). 1.1.0 put this down to the recolour moving the
+  keypoints; there are almost none to move. Under X2 both exits ask the structural door first,
+  which keeps the first two, and route derivation 2 reads the third as Fast; XRank reads Copy on
+  all 1,952 queries (`sibench lost`). The one pair in the eval split was §9.3's 0.3-point gap
+  between nomination and verdict, now closed. The door costs about 17 µs natively on an
+  unrelated pair, asked only where the gate would drop one (docs/PAPH-X.md §4).
+* **Comparator 42's own gated rank drops far more, and is unchanged.** `rank` with `gate: true`
+  (`paph_rank42`, flags bit 0) — the verifier of docs/SEARCH.md §4 and of the pixagram-search
+  integration — screens out every pair whose stage-1 pools stay below `geo_min_corr` (8): on
+  this corpus 178 of the 976 comparator-42 copies, 164 of them — the three recolours above among
+  them — because a side has fewer than 8 keypoints and can never pass (`sibench lost`). XRank
+  does not gate a candidate its route reads as Fast (172 of the 178), and under X2 reads Copy on
+  all 976. Verify with XRank, or with `rank` and `gate: false`.
 * **Blur-like transforms.** Box-filter resamples and non-integer rescales move every wire section
   the families read (the front end quantises to a palette and downsamples by majority, which
   blending defeats). Comparator 42 rarely certifies them either: of 120 pairs each, it reads
   Copy on 0 down70, 15 resample90 and 6 up150 pairs.
-* **Unexplained shortfalls.** SHAPE, SIL and KPGEO under the square's symmetries, and LOCAL and
+* **Unexplained shortfalls.** SHAPE, SIL and KPGEO under mirror, rot90 and rot180, and LOCAL and
   BAND under the complement, fall short of their design (§3.2) for reasons not established here.
+  For the first three, §3.3 rules out the thumbnail's and the shapes section's grids, and their
+  holding under transpose points at rounding anchored to the top-left corner; §3.2 names the
+  candidates read from the code. Fixing any of them changes the cells, so it is a new SI profile
+  and a re-index, not a patch.
 * **Continuous re-ranking.** Storing each family's four projections (24 bytes) and re-ranking the
   admitted pool by noise-scaled distance measured +2.3–2.4 points at 0.5–1 % pools and +0.7 at
   0.1 % in the prototype (§9.6). Not worth a signature change before the real corpus says

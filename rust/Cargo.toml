@@ -1,6 +1,6 @@
 [package]
 name    = "paph-x"
-version = "1.1.0"
+version = "1.1.1"
 edition = "2021"
 license = "MIT"
 description = "PAPH-X — PAPH 4.2's integer-only perceptual hash and calibrated comparator for pixel-art plagiarism detection (wire SPEC-003, comparator SPEC-004.2) with the retrieval-native cascade of SPEC-X and the PAPH-SI screening index of SPEC-SI"

@@ -175,6 +175,28 @@ const hits = paph.rank(q, sides, { gate: true });   // one call, lean readings
 and comparator 42 on the ones it passes (`state: -1` = unscreened, never compared). A screened
 pair costs ~1–5 ms in WebAssembly; a nominated set of a few dozen is ~50–200 ms.
 
+**The gate drops copies.** The stage-1 screen passes a pair on keypoint correspondences alone —
+at least `geo_min_corr` (8) of them, and a pair never has more than its smaller side has
+keypoints — while comparator 42 also certifies copies on their structure. On the PAPH-SI corpus
+the gate screens out 178 of the 976 pairs comparator 42 calls Copy: 164 because one side has
+fewer than 8 keypoints, the rest because too few of their correspondences survive (`sibench
+lost`; [PAPH-X.md](PAPH-X.md) §6). Rank with `gate: false`
+(every nominated candidate is compared), or verify with XRank: it does not gate a candidate
+its route signature puts in the Fast class (172 of those 178), and under its shipped profile X2 it
+asks the structural channels before dropping any other:
+
+```js
+const xq = paph.xprepare(query.t1, query.t2, { strict: true });
+const xhits = paph.xrank(xq, rows.map(r => paph.xprepare(r.t1, r.t2)));   // copy scope by default
+// xhits[i]: { state, verdict, certifiable, inliers, geometryEvidence, structuralLo, structuralHi, … }
+```
+
+XRank reads Copy on all 976 of those copies, in both arrival orders, at 0.2–0.6 ms a nominated
+candidate natively (SPEC-SI §9.3); under copy scope a pair the lattice cannot lift above `Related` reads
+`NotCopy` (state 6) instead of a full state, and `state: -1` is a candidate the screen rejected.
+Store each side's `sidecar()` beside its wires and pass it back
+(`xprepare(t1, t2, { sidecar })`) to skip the derivation at query time.
+
 What to keep:
 
 | verdict | meaning | typical action |
@@ -239,9 +261,9 @@ candidate. One SQLite database of 10 GB (a Cloudflare Durable Object's limit) ho
 
 PAPH-SI adds 104 bytes and ≤ 54 postings per work (≈ 45 on average) and one statement per query
 reading ≈ 0.19 postings per stored work. At millions of works the cost that decides latency is
-XRank on the nominated candidates — 0.15 ms each for the median query, 0.59 ms on average for
-the negatives, because nominated candidates are the works that look most like the query; see
-SPEC-SI §9.5 for the budget arithmetic.
+XRank on the nominated candidates — 0.20 ms each for the median query, 0.62 ms on average for
+the negatives (native, X2), because nominated candidates are the works that look most like the
+query; see SPEC-SI §9.5 for the budget arithmetic.
 
 ## 7. Operations
 

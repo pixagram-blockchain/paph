@@ -414,7 +414,7 @@ mod tests {
         use crate::synth::{mirror, nearest_up, pixel_art, rot90, Img};
         use crate::wire::hash;
         use crate::x::{XBound, XPrepared};
-        let prof = SiProfile::si1();
+        let prof = SiProfile::shipped();
         let xb = XBound::shipped();
         let (cfg, rot) = (Config::default(), RotCache::new(&pattern()));
         let side = |im: &Img| -> XPrepared {

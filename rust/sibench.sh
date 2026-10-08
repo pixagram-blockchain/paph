@@ -6,7 +6,8 @@
 #
 #   rust/sibench.sh            evaluation on the 8k corpus (≈ 2 min, XRank on every query)
 #   rust/sibench.sh --big      also the scaling table: 100,000 more distractors (hashed once, ≈ 4 min)
-#   rust/sibench.sh --fit      re-fit SI1 from the corpus first (writes docs/calibration/SI1-PROVISIONAL.psi)
+#   rust/sibench.sh --fit      re-fit SI2 from the corpus first (writes docs/calibration/SI2-PROVISIONAL.psi;
+#                              `sibench fit --x1` writes 1.1.0's SI1)
 set -euo pipefail
 cd "$(dirname "$0")"
 cargo build --release --bin sibench 2>&1 | grep -E "^(error|warning)" -A7 || true

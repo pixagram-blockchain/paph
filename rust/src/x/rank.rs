@@ -8,7 +8,7 @@
 //! thread's and is reused across the whole batch (§14.4).  The output is a
 //! flat `i32` table, `XRANK_FIELDS` per candidate, in candidate order.
 
-use super::compare::{xcompare_in, Execution, Scope, ScreenState, XCtx, XOptions, V_NOT_COPY};
+use super::compare::{structural_door, xcompare_in, Execution, Scope, ScreenState, XCtx, XOptions, V_NOT_COPY};
 use super::prepared::XPrepared;
 use super::profile::{XBound, POLICY_FAST};
 use super::route::{route_batch, route_class, RouteClass, RouteScore, RouteSoA};
@@ -192,8 +192,13 @@ pub fn xrank(
         // route hard-negative with an empty anchor pool stops here; so does
         // a candidate whose pools stay thin through the expansion tiers
         // unless the route certifies it — the gate 4.2's rank applies, with
-        // the route as the structural door it never had
+        // the route as the structural door it never had.  Under a profile
+        // with `gate_door` neither exit drops a pair whose structure alone
+        // could still certify a Copy: the route is a sketch and does not
+        // see every recolour (§14.3's "strong structural signal", checked)
         let mut prescanned = false;
+        // the door is asked at most once per candidate
+        let mut door: Option<bool> = None;
         if opts.gate && rc != RouteClass::Fast {
             ctx.m.begin(ca, cb);
             prescanned = true;
@@ -201,7 +206,10 @@ pub fn xrank(
             let limit = cfg.geo_min_corr.max(1);
             let mut d = ctx.m.count(false, ca, cb, base, limit).count;
             let mut m = if cfg.mirror_hypothesis { ctx.m.count(true, ca, cb, base, limit).count } else { 0 };
-            if rc == RouteClass::Reject && d.max(m) as i32 <= xp.defer_pool_max {
+            if rc == RouteClass::Reject
+                && d.max(m) as i32 <= xp.defer_pool_max
+                && !(xp.gate_door != 0 && *door.get_or_insert_with(|| structural_door(ca, cb, base, &mut ctx.d0)))
+            {
                 rec[field::POOL_DIRECT] = d as i32;
                 rec[field::POOL_MIRROR] = m as i32;
                 rec[field::ROWS] = ctx.m.stats.rows as i32;
@@ -225,7 +233,7 @@ pub fn xrank(
                     break;
                 }
             }
-            if d.max(m) < cfg.geo_min_corr {
+            if d.max(m) < cfg.geo_min_corr && !(xp.gate_door != 0 && *door.get_or_insert_with(|| structural_door(ca, cb, base, &mut ctx.d0))) {
                 rec[field::POOL_DIRECT] = d as i32;
                 rec[field::POOL_MIRROR] = m as i32;
                 rec[field::ROWS] = ctx.m.stats.rows as i32;
@@ -346,5 +354,80 @@ mod tests {
         let mirror_rec = &out[(refs.len() - 2) * XRANK_FIELDS..(refs.len() - 1) * XRANK_FIELDS];
         assert_eq!(mirror_rec[field::STATE], state_code("Copy"), "{:?}", mirror_rec);
         println!("rejected {} of {} unrelated candidates by the screen", rejected, 20);
+    }
+
+    /// Two copies comparator 42 certifies on structure alone — channel
+    /// swaps of works with almost no keypoints (3 and 0 a side: the PAPH-SI
+    /// corpus' bases 25 and 116), so the anchor pools are empty, and the swap
+    /// moves the route out of its Fast class.  X1's gate drops them, one at
+    /// each exit.  X2 keeps both: the first through the structural door (its
+    /// route still reads Reject; the pair screen defers it and the fast
+    /// policy no longer reads Unrelated), the second because route
+    /// derivation 2 reads its route as Fast, which XRank does not gate.  X1's
+    /// derivation with the door on keeps both through the door, the second
+    /// at the gate's second exit (route Defer, pools still empty).
+    #[test]
+    fn the_structural_door_keeps_structure_only_copies() {
+        use crate::synth::{pixel_art, Img};
+        use crate::x::compare::{xscreen, ScreenState};
+        use crate::x::profile::{XProfile, POLICY_FAST, ROUTE_DERIVATION_1};
+        let cfg = Config::default();
+        let chswap = |a: &Img| -> Img {
+            let mut o = a.clone();
+            for i in 0..a.w * a.h {
+                o.px.swap(i * 4, i * 4 + 2);
+            }
+            o
+        };
+        let base = crate::calibration::Profile::cal004();
+        let bcfg = crate::v4::bind(&cfg, &base);
+        let rot = crate::keypoints::RotCache::new(&crate::keypoints::pattern());
+        for (k, im) in [pixel_art(96, 96, 11 + 97 * 25, 6, 1), pixel_art(48, 48, 11 + 97 * 116, 9, 2)].iter().enumerate() {
+            let cp = chswap(im);
+            let (fa, fb) = (hash(&im.px, im.w, im.h, &cfg, &rot), hash(&cp.px, cp.w, cp.h, &cfg, &rot));
+            let (pa, pb) = (Prepared::new(&fa.t1, Some(&fa.t2)).unwrap(), Prepared::new(&fb.t1, Some(&fb.t2)).unwrap());
+            // comparator 42: Copy, on structure alone
+            let swapped = canon_swapped(&pa, &pb);
+            let (ca, cb) = if swapped { (&pb, &pa) } else { (&pa, &pb) };
+            let r42 = crate::v42::compare_in(&mut crate::prepared::PairCtx::new(ca, cb), swapped, &bcfg, &base, crate::compare::Reading::Lean).base;
+            assert_eq!(r42.verdict, "Copy", "case {k}: {}", r42.class);
+            assert_eq!(r42.basis, vec!["structural"], "case {k}");
+            assert!(pa.kp.len().max(pb.kp.len()) < 8, "case {k}: {} / {} keypoints", pa.kp.len(), pb.kp.len());
+            // X1's derivation with the door on: a valid version-2 profile
+            let mut d1 = XProfile::x2();
+            d1.route_derivation = ROUTE_DERIVATION_1;
+            let d1 = XBound::new(base.clone(), d1);
+            assert!(d1.refused.is_none());
+            // (profile, the rank state, the route class XRank reads)
+            let reject = route_code(RouteClass::Reject);
+            let runs = [
+                (XBound::x1(), -1, [reject, route_code(RouteClass::Defer)][k]),
+                (XBound::shipped(), state_code("Copy"), [reject, route_code(RouteClass::Fast)][k]),
+                (d1, state_code("Copy"), [reject, route_code(RouteClass::Defer)][k]),
+            ];
+            for (xb, want, class) in runs {
+                let q = XPrepared::new(Prepared::new(&fa.t1, Some(&fa.t2)).unwrap(), &xb);
+                let c = XPrepared::new(Prepared::new(&fb.t1, Some(&fb.t2)).unwrap(), &xb);
+                let mut out = vec![0i32; XRANK_FIELDS];
+                xrank(&q, &[Some(&c)], &cfg, &xb, &XRankOptions::default(), &mut XCtx::new(), &mut RankScratch::new(), &mut out);
+                let what = format!("case {k} under {} (derivation {}, door {})", xb.xp.name_str(), xb.xp.route_derivation, xb.xp.gate_door);
+                assert_eq!(out[field::STATE], want, "{what}: {:?}", &out[..12]);
+                assert_eq!(out[field::ROUTE_CLASS], class, "{what}: {:?}", &out[..12]);
+                assert_eq!(out[field::POOL_DIRECT].max(out[field::POOL_MIRROR]), 0, "{what}");
+                let s = xscreen(&q, &c, &cfg, &xb, &mut XCtx::new());
+                let f = super::super::compare::xcompare(&q, &c, &cfg, &xb, &XOptions { policy: Some(POLICY_FAST), ..XOptions::default() }, &mut XCtx::new());
+                if k == 0 {
+                    // the route rejects it and the anchor pool is empty: the
+                    // pair screen and the fast policy drop it unless the door
+                    // opens, and it does
+                    if xb.xp.gate_door == 0 {
+                        assert_eq!((s.state, f.verdict), (ScreenState::Reject, "Unrelated"), "{what}");
+                    } else {
+                        assert_eq!((s.state, s.reason), (ScreenState::Defer, "structure"), "{what}");
+                        assert_ne!(f.verdict, "Unrelated", "{what}");
+                    }
+                }
+            }
+        }
     }
 }

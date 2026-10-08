@@ -1,4 +1,4 @@
-//! Calibration profile X1 (PAPH-X specification §20, §43).
+//! Calibration profiles X1 and X2 (PAPH-X specification §20, §43).
 //!
 //! Everything that can change an XRoute, an XMatch or an XRank result lives
 //! here, as one immutable byte artefact with a SHA-256 identity — the same
@@ -18,7 +18,18 @@ use crate::config::Config;
 use crate::sha256::{hex, sha256};
 
 pub const X_COMPARATOR: u16 = 50;
+/// The artefact layout of X1: no route-derivation or gate fields (they are
+/// 1 and 0, implied).  Its bytes, and so its identity, never change.
 pub const X_PROFILE_VERSION: u16 = 1;
+/// The layout of X2 onwards: two more bytes, `route_derivation` and
+/// `gate_door`, after `defer_pool_max`.
+pub const X_PROFILE_VERSION_2: u16 = 2;
+/// Route derivations (`route.rs`): 1 is 1.0.0's global words; 2 replaces
+/// the diagonal half of G1 (not mirror-invariant) by the horizontal /
+/// vertical anisotropy and reads G3's regions as a sorted list (their stored
+/// order breaks area ties by position, which the symmetries move).
+pub const ROUTE_DERIVATION_1: u8 = 1;
+pub const ROUTE_DERIVATION_2: u8 = 2;
 const MAGIC: &[u8; 4] = b"PXCL";
 
 /// Route lane counts (§6.1).  Fixed by the route format; recorded in the
@@ -110,6 +121,16 @@ pub struct XProfile {
     pub route_reject_unrelated: u8,
     /// sparse pools at or below this, with a non-weak route, DEFER
     pub defer_pool_max: i32,
+
+    // ---- version 2 (X2): implied 1 / 0 under version 1
+    /// which global words a route holds (`ROUTE_DERIVATION_*`)
+    pub route_derivation: u8,
+    /// 1: no screen exit drops a pair whose structure alone could still
+    /// certify a Copy (the lattice's recolour arm) — the route hard-negative
+    /// shortcut, `xscreen`'s Reject and both XRank gate exits ask the
+    /// structural channels first (§14.3's "strong structural signal" made a
+    /// check instead of an assumption); 0: 1.0.0's screen
+    pub gate_door: u8,
 }
 
 fn w32(b: &mut Vec<u8>, v: i32) {
@@ -198,9 +219,36 @@ impl XProfile {
         String::from_utf8_lossy(&self.name[..end]).into_owned()
     }
 
-    /// X1-PROVISIONAL bound to CAL-004-PROPOSED — the shipped defaults.
+    /// X1-PROVISIONAL bound to CAL-004-PROPOSED — 1.0.0's profile, kept
+    /// byte for byte.
     pub fn x1() -> XProfile {
         Self::x1_for(&Profile::cal004())
+    }
+
+    /// X2-PROVISIONAL bound to CAL-004-PROPOSED — the shipped default from
+    /// 1.1.1.
+    pub fn x2() -> XProfile {
+        Self::x2_for(&Profile::cal004())
+    }
+
+    /// The shipped default bound to `base`.
+    pub fn shipped_for(base: &Profile) -> XProfile {
+        Self::x2_for(base)
+    }
+
+    /// X2-PROVISIONAL bound to `base`: X1 with route derivation 2 and the
+    /// structural door on every screen exit.  The route bars are X1's,
+    /// calibrated on the xbench corpus (`xbench --calibrate`) and measured
+    /// on the PAPH-SI corpus (`sibench route`).
+    pub fn x2_for(base: &Profile) -> XProfile {
+        let mut p = Self::x1_for(base);
+        let mut name = [0u8; 16];
+        name[..14].copy_from_slice(b"X2-PROVISIONAL");
+        p.name = name;
+        p.version = X_PROFILE_VERSION_2;
+        p.route_derivation = ROUTE_DERIVATION_2;
+        p.gate_door = 1;
+        p
     }
 
     /// X1-PROVISIONAL bound to `base`.
@@ -241,6 +289,8 @@ impl XProfile {
             fallback_policy: POLICY_SAFE,
             route_reject_unrelated: 1,
             defer_pool_max: 3,
+            route_derivation: ROUTE_DERIVATION_1,
+            gate_door: 0,
         }
     }
 
@@ -283,12 +333,16 @@ impl XProfile {
         b.push(self.fallback_policy);
         b.push(self.route_reject_unrelated);
         w32(&mut b, self.defer_pool_max);
+        if self.version >= X_PROFILE_VERSION_2 {
+            b.push(self.route_derivation);
+            b.push(self.gate_door);
+        }
         b
     }
 
     pub fn decode(b: &[u8]) -> Result<XProfile, &'static str> {
         const LEN: usize = 4 + 2 + 2 + 16 + 32 + 8 + 11 * 4 + 8 + 2 * 4 + LSH_BASE * LSH_BITS + 5 * 4 + 4 * 4 + 5 * 4 + 2 + 4;
-        if b.len() != LEN {
+        if b.len() < 8 {
             return Err("x profile length");
         }
         if &b[0..4] != MAGIC {
@@ -296,8 +350,12 @@ impl XProfile {
         }
         let version = u16::from_le_bytes([b[4], b[5]]);
         let comparator = u16::from_le_bytes([b[6], b[7]]);
-        if version != X_PROFILE_VERSION || comparator != X_COMPARATOR {
+        if (version != X_PROFILE_VERSION && version != X_PROFILE_VERSION_2) || comparator != X_COMPARATOR {
             return Err("x profile targets another comparator");
+        }
+        let want = if version >= X_PROFILE_VERSION_2 { LEN + 2 } else { LEN };
+        if b.len() != want {
+            return Err("x profile length");
         }
         let mut name = [0u8; 16];
         name.copy_from_slice(&b[8..24]);
@@ -345,6 +403,8 @@ impl XProfile {
         let route_reject_unrelated = b[o + 1];
         o += 2;
         let defer_pool_max = r32(b, o);
+        o += 4;
+        let (route_derivation, gate_door) = if version >= X_PROFILE_VERSION_2 { (b[o], b[o + 1]) } else { (ROUTE_DERIVATION_1, 0) };
         let p = XProfile {
             version,
             comparator,
@@ -374,14 +434,23 @@ impl XProfile {
             fallback_policy,
             route_reject_unrelated,
             defer_pool_max,
+            route_derivation,
+            gate_door,
         };
         p.validate()?;
         Ok(p)
     }
 
     pub fn validate(&self) -> Result<(), &'static str> {
-        if self.version != X_PROFILE_VERSION || self.comparator != X_COMPARATOR {
+        if (self.version != X_PROFILE_VERSION && self.version != X_PROFILE_VERSION_2) || self.comparator != X_COMPARATOR {
             return Err("x profile version");
+        }
+        // version 1 cannot express anything but 1.0.0's route and screen
+        if self.version == X_PROFILE_VERSION && (self.route_derivation != ROUTE_DERIVATION_1 || self.gate_door != 0) {
+            return Err("x profile version 1 holds route derivation 1 and no gate door");
+        }
+        if !(ROUTE_DERIVATION_1..=ROUTE_DERIVATION_2).contains(&self.route_derivation) || self.gate_door > 1 {
+            return Err("route derivation or gate door");
         }
         if !(0..=LOCAL_LANES as i32).contains(&self.t_local_fast) || !(0..=LOCAL_LANES as i32).contains(&self.t_local_low) {
             return Err("local route bars");
@@ -470,6 +539,36 @@ mod tests {
     }
 
     #[test]
+    fn x1_is_frozen_and_x2_roundtrips() {
+        // X1's artefact is 1.0.0's, byte for byte: its identity is pinned
+        let x1 = XProfile::x1();
+        assert_eq!(x1.id_hex16(), "b96040d888b21e28", "X1-PROVISIONAL moved");
+        assert_eq!((x1.route_derivation, x1.gate_door), (ROUTE_DERIVATION_1, 0));
+        let x2 = XProfile::x2();
+        x2.validate().unwrap();
+        let b = x2.encode();
+        assert_eq!(b.len(), x1.encode().len() + 2);
+        let q = XProfile::decode(&b).unwrap();
+        assert_eq!(q, x2);
+        assert_eq!(q.encode(), b);
+        assert_ne!(x2.id(), x1.id());
+        assert_eq!((x2.route_derivation, x2.gate_door), (ROUTE_DERIVATION_2, 1));
+        println!("X2-PROVISIONAL id {} ({} bytes)", hex(&x2.id()), b.len());
+        // a version-1 artefact cannot claim version-2 behaviour
+        let mut bad = x1.clone();
+        bad.gate_door = 1;
+        assert!(bad.validate().is_err());
+        let mut bad = x2.clone();
+        bad.route_derivation = 3;
+        assert!(bad.validate().is_err());
+        // truncating X2 to X1's length, or padding X1, is refused
+        assert!(XProfile::decode(&b[..b.len() - 2]).is_err());
+        let mut long = x1.encode();
+        long.extend_from_slice(&[2, 1]);
+        assert!(XProfile::decode(&long).is_err());
+    }
+
+    #[test]
     fn table_is_mirror_closed_and_distinct() {
         let p = XProfile::x1();
         let t = p.projections();
@@ -537,8 +636,13 @@ impl XBound {
         XBound { base, xp, base_id, xid, salts, projections, refused }
     }
 
-    /// The shipped pair: CAL-004-PROPOSED and X1-PROVISIONAL.
+    /// The shipped pair: CAL-004-PROPOSED and X2-PROVISIONAL.
     pub fn shipped() -> XBound {
+        XBound::new(Profile::cal004(), XProfile::x2())
+    }
+
+    /// 1.0.0's pair: CAL-004-PROPOSED and X1-PROVISIONAL.
+    pub fn x1() -> XBound {
         XBound::new(Profile::cal004(), XProfile::x1())
     }
 

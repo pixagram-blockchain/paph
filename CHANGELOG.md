@@ -1,5 +1,114 @@
 # Changelog
 
+## 1.1.1 — 2026-10-08 — profile X2: 1.1.0's three findings, addressed
+
+The wire (3), comparator 42, CAL-004-PROPOSED, ABI 3, X ABI 1 and SI ABI 1 do not move; the
+equivalence digest (3,160 cases) is byte-identical natively and in both WebAssembly builds. The
+shipped PAPH-X profile is now **X2-PROVISIONAL** — X1 with the same bars, route derivation 2 and
+the structural door — and the shipped PAPH-SI profile **SI2-PROVISIONAL**, 1.1.0's SI1 fit bound
+to X2. X1 and SI1 stay, byte for byte: SI1 in `docs/calibration/` as before, and X1, so far
+built into the engine only, now also as `docs/calibration/X1-PROVISIONAL.pxcl`. Measured on the
+PAPH-SI corpus (120 bases × 20 transforms, 976 comparator-42 Copy pairs) and the PAPH-X corpus
+(2,379 pairs), X1 and X2 in one run: `docs/calibration/X2-PROVISIONAL.log`.
+
+**1. XRoute's global words under the square's symmetries.** Two of the four had invariance
+defects of their own, fixed by route derivation 2. G1's high half held the main-diagonal run
+histogram, which a mirror sends to the anti-diagonal the wire does not hold; it now holds
+|horizontal − vertical| per run bin (the low half stays their average), and G1 equals its
+original's on 100 % of D4 copies (X1: 58–59 %). G3 kept the shapes section's region order, which
+breaks ties in area by position; it is now the sorted list of region codes: 83–84 % (X1:
+72–76 %), and 217 of 220 on canvases whose long side is at most 128 px, where that section's
+grid is the pixel grid. G0, the DCT word, is unchanged at 87 % / 41 % (sides multiples of 16 /
+not): the limit is the wire's DCT section, which differs between a work and its D4 copy — the
+16 × 16 thumbnail's cells do not commute with a flip unless the side is a multiple of 16, and a
+quarter turn swaps the integer DCT's two rounded passes; over the lowest 8 × 8 frequencies a
+magnitude bit differs on 2.4–13.7 % of D4 copies. Exact invariance needs symmetric sampling in
+the hasher — new wire bytes and every stored work re-hashed — so it is documented, not patched.
+
+**2. The route class as a filter.** X2 keeps X1's route bars — bars that keep every copy out of
+the Reject class would leave 55 % of unrelated pairs in it instead of 93 % — and 42 of the 976
+copies score in the class (X1: 49). What changes is that no exit acts on the class alone: the
+pair screen's route-Reject exit and the fast policy's `Unrelated` shortcut ask the structural
+door (below) first. Copies the pair screen rejects: 2 → 0.
+
+**3. XRank's gate.** Both of its exits — route Reject with an anchor pool of at most
+`defer_pool_max` (3), and pools below `geo_min_corr` (8) after the expansion tiers — ask the
+structural door before dropping a pair. Comparator-42 Copy queries XRank does not read Copy,
+shown the target alone: 6 of 1,952 → 0; the PAPH-SI funnel end to end: 99.5 % → 99.8 %, all it
+nominates. The three pairs are two channel swaps and a palette shuffle of works with 0–3
+keypoints a side, so their anchor pools are empty; the recolour moved them out of the route's
+Fast class, which XRank does not gate; comparator 42 certifies them on structure alone. (1.1.0
+put this down to the recolour moving the keypoints; there are almost none to move.) Under X2 the
+door keeps two of them and route derivation 2 reads the third as Fast (`sibench lost`).
+
+**The structural door.** The structural channels — runs, silhouette, the local channel's
+edge-set bound, topology, shape, DCT, palette, a near-cheapest order — until the upper bound of
+the weighted structural score (unknown channels at their maximum) falls below the bar of the
+lattice's recolour arm (the larger of the strong and solo bars, 6000 under CAL-004), or the pair
+is not certifiable (local not measurable, fewer than three secondaries). The exits still read
+thin anchor pools as the geometric arms being out of reach, as X1 did; the door answers exactly,
+on any corpus, for the arm that needs no geometry: a pair whose door shuts cannot be a
+structure-only Copy, and one whose door stays open is compared. Its order costs 20.6 µs per
+certifiable unrelated pair of the PAPH-SI corpus, within 0.1 µs of the cheapest of all 5,040
+orders (the cascade's own: 28.4 µs), and it shut on all 3,360 unrelated pairs (`sibench
+doorprof`). It is a profile field (`gate_door`), on in X2.
+
+**What it costs**, one core, X1 → X2: the door costs about 17 µs natively on an unrelated pair
+(the mean over those 3,360), paid wherever a screen exit would have dropped the pair. `xscreen`
+p50 16.6 → 34.7 µs (p95 116 → 117); `xcompare` fast p50 19.2 → 36.9 µs, safe unchanged;
+`xrank` on the §3.1 reference workload 26.3 → 27.9 ms (3.2× rank 42 either way), N = 1,000
+aggregate 143 → 184 ms; per nominated candidate in the PAPH-SI funnel 153 / 374 / 593 →
+196 / 399 / 616 µs (median query / mean / unrelated pools). WebAssembly: `xscreen` on unrelated
+same-style pairs 8.2 → 22 µs, the reference workload 31.0 → 33.8 ms.
+
+**Found, not changed: comparator 42's own gated rank drops far more.** `rank` with
+`gate: true` — 4.2.3's `paph_rank42` with flags bit 0, the call `docs/SEARCH.md` §4 and
+`integrations/pixagram-search` make — screens out every pair whose stage-1 pools stay below
+`geo_min_corr` (8), and a pool is never larger than the smaller side's keypoint count. On the
+PAPH-SI corpus that is 178 of the 976 comparator-42 copies, 164 of them because a side has fewer
+than 8 keypoints (`sibench lost`). XRank does not gate 172 of the 178 (its route reads them as
+Fast) and under X2 reads Copy on all 976. The gate is 4.2.3's and stays as it is in a patch
+release; `docs/SEARCH.md` §4, `docs/PAPH-X.md` §6, the glue's `rank` and the integration's README
+now say so: verify with `xrank` (X2), or `rank` with `gate: false`.
+
+**Artefacts and API.** The X profile artefact gains layout version 2: two bytes,
+`route_derivation` and `gate_door`; a version-1 artefact (X1) decodes as before and cannot claim
+version-2 behaviour. `docs/calibration/X2-PROVISIONAL.pxcl` (332 bytes, `27993afaaca76d11…`),
+`X1-PROVISIONAL.pxcl` (330 bytes, `b96040d888b21e28…`), `SI2-PROVISIONAL.psi` (5,334 bytes,
+`abfef6f814c4915b…`; `sibench fit` reproduces it byte for byte). The glue's `xprofile()` and
+`siprofile()`, and `paph_xprofile` / `paph_siprofile` given no artefact, now build X2 and SI2.
+`--x1` runs `sibench`, `xbench`, `xcli` and `node test/x-bench.mjs` under X1 and SI1. `sibench
+route` adds the zero-copy bar search, the global words, the SI cells and the DCT section under the
+square's symmetries; `sibench lost` prints each lost pair's channels, keypoints and comparator
+42's own screen, under X2 the pairs X1 loses and what keeps them, and the copies comparator 42's
+gated rank screens out; `sibench doorprof` is new, and so are `xcli xprofile`, `xcli doorcase`
+and `xbench --dump-route`.
+
+**Compatibility.** Nothing is re-hashed and no wire changes. PAX1 sidecars name the profile they
+were derived under, so an X1 sidecar does not match X2: `xprepare` derives the side again —
+store the new sidecar. SI2 signs every work with the bytes SI1 signs it with (the route's MinHash
+lanes, which SI bands, are unchanged), so an SI index built under 1.1.0 holds the same signatures;
+only the profile id it records changes. Hosts that need 1.1.0's behaviour load X1 and SI1 from
+their artefacts.
+
+**Verification.** 4 new unit tests (113 in all): X1's artefact pinned byte for byte and X2
+round-tripping; derivation 2's G1 and G2 equal on every D4 copy of twelve generated works
+(derivation 1's G1 moves on 18 of 48); two channel swaps comparator 42 certifies on structure
+alone, dropped by X1's gate (the first also by its pair screen and fast policy) and kept under
+X2 — the first by the door, the second by route derivation 2 — and both by the door under X1's
+derivation with the door on, the second at the gate's second exit; SI2 is SI1 bound to X2.
+`npm run test:x` (3,464 checks) checks the shipped profile is X2 byte for byte, loads X1, runs the
+two channel swaps through XRank, the pair screen and the fast policy under both profiles, and
+holds their rank records equal natively and in both WebAssembly builds; `npm run test:si` (1,420
+checks) checks that SI1 under X1 and SI2 under X2 sign every work alike and that SI1 refuses an
+X2 side.
+
+**Documentation.** `docs/PAPH-X.md` (§2 route derivation 2 and the door, §4 X1 beside X2, §5,
+§6), `docs/SPEC-SI-paph-si.md` (header, §0, §3.2–§3.3 — now split by the shapes section's grid
+as well as the thumbnail's: the route's region word follows the former, the SHAPE, SIL and KPGEO
+families follow neither — §8–§11), `docs/SEARCH.md` §4 and §6, `docs/WASM-ABI.md`, the README and
+the integration's README.
+
 ## 1.1.0 — 2026-10-08 — PAPH-SI: which stored works are worth comparing
 
 Nothing of 1.0.0 moves: the wire (3), comparator 42, CAL-004-PROPOSED, PAPH-X and profile

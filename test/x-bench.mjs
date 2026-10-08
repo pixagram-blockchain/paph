@@ -4,7 +4,9 @@
  * markdown tables.  Nothing printed here is a claim until it is printed
  * here (specification §41.7).
  *
- *     node test/x-bench.mjs [--reps 5]
+ *     node test/x-bench.mjs [--reps 5] [--x1]
+ *
+ * Under the shipped X2-PROVISIONAL, or 1.0.0's X1-PROVISIONAL with --x1.
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +20,19 @@ const REPS = +arg('--reps', 5);
 
 const simd = await init(join(here, '..', 'wasm', 'paph.wasm'));
 const base = await init(join(here, '..', 'wasm', 'paph-baseline.wasm'));
+const X1 = process.argv.includes('--x1');
+if (X1) {
+  // every PAPH-X call under X1: the sides and the calls carry the profile
+  const bytes = readFileSync(join(here, '..', 'docs', 'calibration', 'X1-PROVISIONAL.pxcl'));
+  for (const e of [simd, base]) {
+    const prof = e.xprofile({ x: bytes });
+    const [xp, xs, xc, xr] = [e.xprepare.bind(e), e.xscreen.bind(e), e.xcompare.bind(e), e.xrank.bind(e)];
+    e.xprepare = (a, b, o) => (a && a.t1 && !(a instanceof Uint8Array)) ? xp(a, { ...(b || {}), profile: prof }) : xp(a, b, { ...(o || {}), profile: prof });
+    e.xscreen = (a, b, o) => xs(a, b, { ...(o || {}), profile: prof });
+    e.xcompare = (a, b, o) => xc(a, b, { ...(o || {}), profile: prof });
+    e.xrank = (q, c, o) => xr(q, c, { ...(o || {}), profile: prof });
+  }
+}
 
 /* best-of-REPS of the mean over n calls: noise on a shared machine is one-sided */
 function time(fn, n) {
@@ -45,7 +60,7 @@ const pairs = [
   ['work × unrelated work', fp(W), fp(work(512, 384, 8))]
 ];
 
-console.log(`\nPAPH-X in WebAssembly (${simd.simd ? 'SIMD128' : 'baseline'} build) — X ABI ${simd.x.paph_xabi()}, best of ${REPS}\n`);
+console.log(`\nPAPH-X in WebAssembly (${simd.simd ? 'SIMD128' : 'baseline'} build) — X ABI ${simd.x.paph_xabi()}, ${X1 ? 'X1' : 'X2'}-PROVISIONAL, best of ${REPS}\n`);
 console.log('### Pair screen (ms per pair)\n');
 console.log('| pair | screen 42 | xscreen | xscreen, baseline build | xscreen state |');
 console.log('|---|---:|---:|---:|---|');

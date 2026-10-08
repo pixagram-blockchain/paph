@@ -406,6 +406,10 @@ export declare class Engine {
   compare(a: SideOrWires, b: SideOrWires, o?: CompareOptions & { json?: false }): Report;
   compare(a: SideOrWires, b: SideOrWires, o: CompareOptions & { json: true }): string;
   screen(a: SideOrWires, b: SideOrWires, o?: { profile?: Profile | Uint8Array; opts?: Options }): Screen;
+  /** Screen, then compare the survivors.  `gate` (default true) passes a pair only on
+   *  `geo_min_corr` (8) keypoint correspondences or more, so it drops every copy of a work with
+   *  fewer keypoints, and some others, that comparator 42 would certify: `gate: false`, or
+   *  `xrank` under X2, keeps those (docs/SEARCH.md §4). */
   rank(query: SideOrWires, candidates: SideOrWires[],
        o?: { gate?: boolean; profile?: Profile | Uint8Array; opts?: Options; raw?: boolean }): RankRecord[] & { records?: Int32Array };
   descriptors(side: SideOrWires, o?: { sketch?: boolean; strongest?: boolean }): Uint32Array;
@@ -417,7 +421,8 @@ export declare class Engine {
   /* ---- PAPH-X ---- */
 
   /** An X profile: `base` a Profile or .pcal bytes (default the shipped CAL-004-PROPOSED), `x` the X
-   *  artefact bytes (default the shipped X1-PROVISIONAL bound to that base).  Check `status()`. */
+   *  artefact bytes (default the shipped X2-PROVISIONAL bound to that base; 1.0.0's X1-PROVISIONAL
+   *  is docs/calibration/X1-PROVISIONAL.pxcl).  Check `status()`. */
   xprofile(o?: { base?: Profile | Uint8Array; x?: Uint8Array }): XProfile;
   /** Parse and derive a side once: route, bucket index, anchor order.  `sidecar`: PAX1 bytes a
    *  previous `XSide.sidecar()` returned, used when they match the wires and the profile. */
@@ -436,7 +441,8 @@ export declare class Engine {
 
   /* ---- PAPH-SI ---- */
 
-  /** An SI profile from its artefact, or the shipped SI1-PROVISIONAL. */
+  /** An SI profile from its artefact, or the shipped SI2-PROVISIONAL (bound to X2; SI1, bound to X1,
+   *  is docs/calibration/SI1-PROVISIONAL.psi). */
   siprofile(bytes?: Uint8Array): SIProfile;
   /** The signature of a side: from an XSide (route reused) or from `{ t1, t2 }` alone (no bucket index). */
   sisig(side: XSideOrWires, o?: { profile?: SIProfile; xprofile?: XProfile }): SISignature;

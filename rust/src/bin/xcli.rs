@@ -12,7 +12,14 @@
 //!     xcli sirank  q.t1 q.t2 c1.t1 c1.t2 ... [--threshold n] [--budget n]
 //!                                                  every candidate's score, then the index's answer
 //!
-//! A missing Tier 2 is spelled `-`.
+//!     xcli xprofile out.pxcl                        write the X profile artefact in use
+//!     xcli doorcase DIR                             write the wires of two structure-only copies
+//!                                                  (channel swaps comparator 42 certifies on
+//!                                                  structure alone, anchor pools empty)
+//!
+//! A missing Tier 2 is spelled `-`.  Everything runs under the shipped
+//! X2-PROVISIONAL (and SI2-PROVISIONAL), or under X1-PROVISIONAL (and
+//! SI1-PROVISIONAL) with `--x1` anywhere on the line.
 use paph::calibration::Profile;
 use paph::config::Config;
 use paph::prepared::Prepared;
@@ -41,12 +48,48 @@ fn policy_of(flags: u32) -> Option<u8> {
     }
 }
 
+/// The SI profile bound to the X profile in use.
+fn si_for(xb: &XBound) -> paph::x::si::SiProfile {
+    if xb.xid == paph::x::XProfile::x1().id() {
+        paph::x::si::SiProfile::si1()
+    } else {
+        paph::x::si::SiProfile::si2()
+    }
+}
+
 fn main() {
     let a: Vec<String> = std::env::args().collect();
-    let xb = XBound::new(Profile::cal004(), paph::x::XProfile::x1());
+    // `--x1` anywhere: run under X1-PROVISIONAL (1.1.0's profile) instead of
+    // the shipped X2; it is not a positional argument
+    let x1 = a.iter().any(|x| x == "--x1");
+    let a: Vec<String> = a.into_iter().filter(|x| x != "--x1").collect();
+    let xb = if x1 { XBound::new(Profile::cal004(), paph::x::XProfile::x1()) } else { XBound::new(Profile::cal004(), paph::x::XProfile::x2()) };
     let cfg = Config::default();
     let mut ctx = XCtx::new();
     match a[1].as_str() {
+        "xprofile" => {
+            // the X profile artefact in use (X2, or X1 with --x1)
+            std::fs::write(&a[2], xb.xp.encode()).expect("write profile");
+            println!("{} {} ({} bytes)", xb.xp.name_str(), paph::sha256::hex(&xb.xid), xb.xp.encode().len());
+        }
+        "doorcase" => {
+            // two copies comparator 42 certifies on structure alone, whose
+            // anchor pools are empty (channel swaps of the PAPH-SI corpus'
+            // bases 25 and 116): the wires, for the cross-engine test
+            let cfg = Config::default();
+            let rot = paph::keypoints::RotCache::new(&paph::keypoints::pattern());
+            for (k, im) in [paph::synth::pixel_art(96, 96, 11 + 97 * 25, 6, 1), paph::synth::pixel_art(48, 48, 11 + 97 * 116, 9, 2)].iter().enumerate() {
+                let mut cp = im.clone();
+                for i in 0..im.w * im.h {
+                    cp.px.swap(i * 4, i * 4 + 2);
+                }
+                for (tag, x) in [("a", im), ("b", &cp)] {
+                    let f = paph::wire::hash(&x.px, x.w, x.h, &cfg, &rot);
+                    std::fs::write(format!("{}/door{}{}.t1", a[2], k, tag), &f.t1).unwrap();
+                    std::fs::write(format!("{}/door{}{}.t2", a[2], k, tag), &f.t2).unwrap();
+                }
+            }
+        }
         "route" => {
             let s = side(&xb, &a[2], &a[3]);
             println!("{}", s.route.to_bytes().iter().map(|b| format!("{:02x}", b)).collect::<String>());
@@ -97,7 +140,7 @@ fn main() {
             println!("{} bytes, route {}, order {}", b.len(), t.route == s.route, t.order == s.order);
         }
         "sisig" => {
-            let sp = paph::x::si::SiProfile::si1();
+            let sp = si_for(&xb);
             let s = side(&xb, &a[2], &a[3]);
             let sig = paph::x::si::SiSig::build(&s.p, &s.route, &sp);
             let mut k = [0i32; paph::x::si::abi::MAX_KEYS];
@@ -106,13 +149,13 @@ fn main() {
             println!("{}", k[..n].iter().map(|v| v.to_string()).collect::<Vec<_>>().join(","));
         }
         "siplan" => {
-            let sp = paph::x::si::abi::SiBound { prof: paph::x::si::SiProfile::si1(), id: paph::x::si::SiProfile::si1().id() };
+            let sp = paph::x::si::abi::SiBound { prof: si_for(&xb), id: si_for(&xb).id() };
             let s = side(&xb, &a[2], &a[3]);
             let q = paph::x::si::SiQuery::new(&s.p, &s.route, &sp.prof);
             println!("{}", paph::x::si::abi::plan_json(&sp, &q).to_string());
         }
         "sirank" => {
-            let sp = paph::x::si::SiProfile::si1();
+            let sp = si_for(&xb);
             let (mut th, mut budget) = (sp.threshold, sp.budget as usize);
             let mut files: Vec<&String> = Vec::new();
             let mut i = 2;

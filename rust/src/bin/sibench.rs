@@ -1,11 +1,29 @@
-//! PAPH-SI benchmark and fitting harness (SPEC-SI §9).
+//! PAPH-SI benchmark and fitting harness (SPEC-SI §9), and the corpus the
+//! 1.1.1 screen fixes were measured on (docs/PAPH-X.md §6).
 //!
 //!     sibench corpus [--bases N] [--distractors N] [--from K] [--out F]   hash a corpus, cache the wires
-//!     sibench fit [--out PATH]                     fit SI1 on the fit split, write the profile
-//!     sibench eval [--profile PATH] [--big F] [--e2e N]
+//!     sibench fit [--out PATH]                     fit SI2 (SI1 with --x1) on the fit split, write the profile
+//!     sibench eval [--profile PATH] [--big F] [--e2e N] [--nogate]
 //!                                                   stability matrix, the proposal's designs against
 //!                                                   SI, the funnel with the key index and XRank,
 //!                                                   scaling to the big distractor file, timings
+//!     sibench route [--neg N]                      the route class and the pair screen on every
+//!                                                   comparator-42 copy and on unrelated pairs, the
+//!                                                   bars that would keep every copy out of the Reject
+//!                                                   class, the global words, the SI cells and the
+//!                                                   DCT section under the square's symmetries (split
+//!                                                   by the DCT thumbnail's grid and the shapes
+//!                                                   section's)
+//!     sibench lost [--nogate]                      the copies XRank does not read Copy, shown the
+//!                                                   target alone, and why (under X2, also the ones
+//!                                                   X1 loses and what keeps them); the copies
+//!                                                   comparator 42's own gated rank screens out
+//!     sibench doorprof                             the structural door on unrelated pairs: where
+//!                                                   it shuts, what each step costs, the cheapest orders
+//!
+//! Every command runs under the shipped X2-PROVISIONAL and SI2-PROVISIONAL,
+//! or under 1.1.0's X1-PROVISIONAL and SI1-PROVISIONAL with `--x1`.
+//! Experiments: `--bars l,b,g` (route lower bars), `--nodoor`.
 //!
 //! The corpus is built from the engine's own generators (`synth.rs`): bases
 //! under twenty transforms, and same-style distractors drawn from the same
@@ -558,7 +576,19 @@ fn fam_name(f: usize) -> &'static str {
 
 // ------------------------------------------------------------------- fit
 
-fn cmd_fit(c: &Corpus, out: &str) {
+/// The SI profile name a fit writes for the X profile it bands: SI1 for
+/// X1 (1.1.0's), SI2 for X2 — the same codebooks and weights (route
+/// derivation 2 changes the global words, not the lanes SI bands), bound to
+/// the other X profile.
+fn si_name_for(xb: &XBound) -> &'static str {
+    if xb.xid == XProfile::x1().id() {
+        "SI1-PROVISIONAL"
+    } else {
+        "SI2-PROVISIONAL"
+    }
+}
+
+fn cmd_fit(c: &Corpus, xb: &XBound, out: &str) {
     let mh: Vec<SiSig> = c.routes.iter().map(SiSig::minhash).collect();
     let paste = TRANSFORMS.iter().position(|&t| t == "paste").unwrap() as i32;
     let noise: Vec<(usize, usize)> = c.pairs(false, |_, t| t != paste).iter().map(|p| (p.1, p.2)).collect();
@@ -568,10 +598,10 @@ fn cmd_fit(c: &Corpus, out: &str) {
         .map(|p| (p.1, p.2))
         .collect();
     let mut name = [0u8; 16];
-    name[..15].copy_from_slice(b"SI1-PROVISIONAL");
+    name[..15].copy_from_slice(si_name_for(xb).as_bytes());
     let o = FitOptions {
         name,
-        xid: XProfile::x1().id(),
+        xid: xb.xid,
         probes: 4,
         random_per_query: 400,
         seed: 0x5349_3150_524f_5631,
@@ -666,6 +696,7 @@ fn designs() -> Vec<Design> {
 }
 
 fn cmd_eval(c: &Corpus, prof: &SiProfile, xb: &XBound, args: &[String]) {
+    let xopts = if args.iter().any(|a| a == "--nogate") { XRankOptions { gate: false, ..XRankOptions::default() } } else { XRankOptions::default() };
     let n = c.recs.len();
     println!("PAPH-SI evaluation — profile {} ({}), X {} — {} works, eval population {} distractors\n", prof.name_str(), prof.id_hex16(), xb.xp.name_str(), n, c.ev_d.len());
     let sigs: Vec<SiSig> = (0..n).map(|i| SiSig::from_parts(&c.fam[i], &c.routes[i], prof)).collect();
@@ -1029,7 +1060,7 @@ fn cmd_eval(c: &Corpus, prof: &SiProfile, xb: &XBound, args: &[String]) {
             let sides: Vec<Option<&XPrepared>> = cand.iter().filter(|&&i| i != r.ti).map(|i| Some(&xps[i])).collect();
             let mut out = vec![0i32; XRANK_FIELDS * sides.len().max(1)];
             let tr = Instant::now();
-            xrank(&xps[&r.qi], &sides, &cfg, xb, &XRankOptions::default(), &mut ctx, &mut rs, &mut out);
+            xrank(&xps[&r.qi], &sides, &cfg, xb, &xopts, &mut ctx, &mut rs, &mut out);
             neg_us += tr.elapsed().as_secs_f64() * 1e6;
             neg_n += sides.len();
         }
@@ -1041,7 +1072,7 @@ fn cmd_eval(c: &Corpus, prof: &SiProfile, xb: &XBound, args: &[String]) {
             let sides: Vec<Option<&XPrepared>> = cand.iter().map(|i| Some(&xps[i])).collect();
             let mut out = vec![0i32; XRANK_FIELDS * sides.len().max(1)];
             let tr = Instant::now();
-            xrank(&xps[&r.qi], &sides, &cfg, xb, &XRankOptions::default(), &mut ctx, &mut rs, &mut out);
+            xrank(&xps[&r.qi], &sides, &cfg, xb, &xopts, &mut ctx, &mut rs, &mut out);
             let ms = tr.elapsed().as_secs_f64() * 1e3;
             t_rank.push(ms);
             per_cand.push(1e3 * ms / cand.len().max(1) as f64);
@@ -1211,6 +1242,350 @@ fn scaling(c: &Corpus, prof: &SiProfile, xb: &XBound, sigs: &[SiSig], keyset: &[
     }
 }
 
+// ------------------------------------------------------------ the screen
+
+/// The 16 x 16 block of the Tier-1 DCT section: (sign, magnitude) per
+/// coefficient, `v * 16 + u`.
+fn dct16(t: &paph::wire::Tier1) -> ([u8; 256], [u8; 256]) {
+    let d = t.sec("dct");
+    let (mut s, mut m) = ([0u8; 256], [0u8; 256]);
+    for i in 0..256 {
+        let b = 2 * i;
+        s[i] = (d[b >> 3] >> (7 - (b & 7))) & 1;
+        let b = b + 1;
+        m[i] = (d[b >> 3] >> (7 - (b & 7))) & 1;
+    }
+    (s, m)
+}
+
+/// `sibench route`: what the route class and the pair screen do with the
+/// comparator-42 copies of the corpus and with unrelated pairs, the bars
+/// that would keep every copy out of the Reject class, and how far the
+/// route's global words — and the DCT section under them — are invariant
+/// under the square's symmetries.
+fn cmd_route(c: &Corpus, xb: &XBound, args: &[String]) {
+    use paph::x::compare::{xscreen, ScreenState};
+    use paph::x::route::{RouteClass, RouteScore, RF_BAND, RF_GLOBAL, RF_LOCAL};
+    let cfg = Config::default();
+    let mut ctx = XCtx::new();
+    let xp = &xb.xp;
+    let xside = |i: usize| XPrepared::new(Prepared::new(&c.recs[i].t1, Some(&c.recs[i].t2)).unwrap(), xb);
+    let nt = TRANSFORMS.len();
+    let (mut tot, mut cls, mut scr) = (vec![0usize; nt], vec![0usize; nt], vec![0usize; nt]);
+    let mut pos: Vec<RouteScore> = Vec::new();
+    let mut neg: Vec<RouteScore> = Vec::new();
+    let dist: Vec<usize> = (0..c.recs.len()).filter(|&i| c.recs[i].base < 0).collect();
+    let k_neg = arg(args, "--neg", 40);
+    // two partitions of the bases: the thumbnail's (both sides multiples of
+    // 16) and the shapes section's (long side at most 128 px after the front
+    // end's integer downscale, where its grid is the pixel grid)
+    const SPLIT: [&str; 4] = ["both sides multiples of 16", "other sizes", "long side ≤ 128 px", "long side > 128 px"];
+    let mut g_eq = [[0usize; 4]; 4];
+    let mut g_n = [0usize; 4];
+    // the SI cells on the same copies (they do not depend on the X profile:
+    // SI1 and SI2 are one fit)
+    let prof = if xb.xid == XProfile::x1().id() { SiProfile::si1() } else { SiProfile::si2() };
+    let mut si_eq = [[0usize; FAMILIES]; 4];
+    let mut si_n = [[0usize; FAMILIES]; 4];
+    let mut flip_s = [[0usize; 8]; 8];
+    let mut flip_m = [[0usize; 8]; 8];
+    let mut n_d4 = 0usize;
+    for b in 0..c.nb {
+        let i = c.at[&(b, 0)];
+        let xa = xside(i);
+        let t1 = &c.sides[i].t1;
+        let grid = if t1.width % 16 == 0 && t1.height % 16 == 0 { 0 } else { 1 };
+        let long = if t1.width.max(t1.height) / (t1.scale.max(1) as usize) <= 128 { 2 } else { 3 };
+        for t in 1..nt as i32 {
+            let j = c.at[&(b, t)];
+            let xj = xside(j);
+            if c.copy(b, t) {
+                let s = xscreen(&xa, &xj, &cfg, xb, &mut ctx);
+                tot[t as usize] += 1;
+                cls[t as usize] += (s.route_class == RouteClass::Reject) as usize;
+                scr[t as usize] += (s.state == ScreenState::Reject) as usize;
+                pos.push(s.route);
+            }
+            if ["mirror", "rot90", "rot180", "transpose"].contains(&TRANSFORMS[t as usize]) {
+                let (sa, sj) = (SiSig::from_parts(&c.fam[i], &c.routes[i], &prof), SiSig::from_parts(&c.fam[j], &c.routes[j], &prof));
+                for part in [grid, long] {
+                    g_n[part] += 1;
+                    for k in 0..4 {
+                        g_eq[part][k] += (xa.route.global[k] == xj.route.global[k]) as usize;
+                    }
+                    for f in 0..FAMILIES {
+                        if sa.present >> f & 1 != 0 && sj.present >> f & 1 != 0 {
+                            si_n[part][f] += 1;
+                            si_eq[part][f] += (sa.cells[f] == sj.cells[f]) as usize;
+                        }
+                    }
+                }
+                // the DCT section itself: the copy's block against the
+                // original's under the D4 element that fits it best
+                if c.sides[i].t1.flags & paph::wire::F_FLAT == 0 {
+                    let (so, mo) = dct16(&c.sides[i].t1);
+                    let (sc, mc) = dct16(&c.sides[j].t1);
+                    let mut best = (usize::MAX, 0usize);
+                    for e in 0..8usize {
+                        let (tr, fh, fv) = (e & 4 != 0, e & 2 != 0, e & 1 != 0);
+                        let mut mis = 0usize;
+                        for v in 0..16usize {
+                            for u in 0..16usize {
+                                if u + v == 0 {
+                                    continue;
+                                }
+                                let (su, sv) = if tr { (v, u) } else { (u, v) };
+                                let s = so[sv * 16 + su] ^ ((fh as u8) & (u as u8) & 1) ^ ((fv as u8) & (v as u8) & 1);
+                                mis += (s != sc[v * 16 + u]) as usize;
+                            }
+                        }
+                        if mis < best.0 {
+                            best = (mis, e);
+                        }
+                    }
+                    let e = best.1;
+                    let (tr, fh, fv) = (e & 4 != 0, e & 2 != 0, e & 1 != 0);
+                    n_d4 += 1;
+                    for v in 0..8usize {
+                        for u in 0..8usize {
+                            let (su, sv) = if tr { (v, u) } else { (u, v) };
+                            let s = so[sv * 16 + su] ^ ((fh as u8) & (u as u8) & 1) ^ ((fv as u8) & (v as u8) & 1);
+                            flip_s[v][u] += (s != sc[v * 16 + u]) as usize;
+                            flip_m[v][u] += (mo[sv * 16 + su] != mc[v * 16 + u]) as usize;
+                        }
+                    }
+                }
+            }
+        }
+        for k in 0..k_neg {
+            let d = dist[(b as usize * 7919 + k * 104_729) % dist.len()];
+            neg.push(xscreen(&xa, &xside(d), &cfg, xb, &mut ctx).route);
+        }
+        for k in 1..=5 {
+            let o = c.at[&((b + 13 * k) % c.nb, 0)];
+            neg.push(xscreen(&xa, &xside(o), &cfg, xb, &mut ctx).route);
+        }
+    }
+    println!("Route class and pair screen on comparator-42 Copy pairs — {} (route derivation {}, bars local {} / band {} / global {}, structural door {}):\n", xp.name_str(), xp.route_derivation, xp.t_local_low, xp.t_band_low, xp.t_global_low, if xp.gate_door != 0 { "on" } else { "off" });
+    println!("| transform | copies | in the Reject class | rejected by the screen |");
+    println!("|---|---:|---:|---:|");
+    for t in 1..nt {
+        if tot[t] > 0 {
+            println!("| {} | {} | {} | {} |", TRANSFORMS[t], tot[t], cls[t], scr[t]);
+        }
+    }
+    println!("| total | {} | {} | {} |", tot.iter().sum::<usize>(), cls.iter().sum::<usize>(), scr.iter().sum::<usize>());
+    // the bars that keep every copy out of the class
+    let low = |r: &RouteScore, l: i32, b: i32, g: i32| -> bool {
+        let m = r.measurable;
+        m != 0 && (m & RF_LOCAL == 0 || r.local < l) && (m & RF_BAND == 0 || r.band < b) && (m & RF_GLOBAL == 0 || r.global < g)
+    };
+    let rate = |l: i32, b: i32, g: i32| neg.iter().filter(|r| low(r, l, b, g)).count() as f64 / neg.len() as f64;
+    let mut best = (-1.0f64, 0, 0, 0);
+    for l in 0..=16 {
+        for b in 0..=10 {
+            for g in 0..=256 {
+                if pos.iter().any(|r| low(r, l, b, g)) {
+                    continue;
+                }
+                let v = rate(l, b, g);
+                if v > best.0 {
+                    best = (v, l, b, g);
+                }
+            }
+        }
+    }
+    println!("\nUnrelated pairs (each base against {k_neg} distractors and 5 other bases, {} pairs): the profile's bars put {:.1}% in the Reject class; the largest bars that put no copy there — local {} / band {} / global {} — put {:.1}%.", neg.len(), 100.0 * rate(xp.t_local_low, xp.t_band_low, xp.t_global_low), best.1, best.2, best.3, 100.0 * best.0);
+    println!("\nThe route's global words on D4 copies (mirror, rot90, rot180, transpose; every base): share equal to the original's, under two partitions of the bases — the DCT thumbnail's (16 × 16 cells) and the shapes section's (cells of ⌈long side / 128⌉ px, sizes after the front end's integer downscale).\n");
+    println!("| canvas | pairs | G0 (DCT) | G1 (runs) | G2 (adjacency) | G3 (regions) |");
+    println!("|---|---:|---:|---:|---:|---:|");
+    for g in 0..4 {
+        let n = g_n[g].max(1) as f64;
+        print!("| {} | {} |", SPLIT[g], g_n[g]);
+        for k in 0..4 {
+            print!(" {:.0}% ({}) |", 100.0 * g_eq[g][k] as f64 / n, g_eq[g][k]);
+        }
+        println!();
+    }
+    println!("\nThe SI cells ({}) on the same copies: share equal to the original's, of the pairs where the family is present in both (counts in brackets).\n", prof.name_str());
+    print!("| canvas |");
+    for f in 0..FAMILIES {
+        print!(" {} |", FAMILY_NAMES[f]);
+    }
+    print!("\n|---|");
+    for _ in 0..FAMILIES {
+        print!("---:|");
+    }
+    println!();
+    for g in 0..4 {
+        print!("| {} |", SPLIT[g]);
+        for f in 0..FAMILIES {
+            print!(" {:.0}% ({}/{}) |", 100.0 * si_eq[g][f] as f64 / si_n[g][f].max(1) as f64, si_eq[g][f], si_n[g][f]);
+        }
+        println!();
+    }
+    let mut ms: Vec<f64> = Vec::new();
+    let mut ss: Vec<f64> = Vec::new();
+    for v in 0..8 {
+        for u in 0..8 {
+            if u + v > 0 {
+                ms.push(100.0 * flip_m[v][u] as f64 / n_d4.max(1) as f64);
+                ss.push(100.0 * flip_s[v][u] as f64 / n_d4.max(1) as f64);
+            }
+        }
+    }
+    ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    ss.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    println!("\nThe Tier-1 DCT section itself on the {n_d4} D4 copies with a measurable thumbnail, aligned under the best of the eight symmetries: over the 63 AC coefficients of the lowest 8 x 8 frequencies, a magnitude bit differs from the original's on {:.1}–{:.1}% of copies (median {:.1}%), a sign bit on {:.1}–{:.1}% (median {:.1}%).", ms[0], ms[ms.len() - 1], ms[ms.len() / 2], ss[0], ss[ss.len() - 1], ss[ss.len() / 2]);
+}
+
+/// `sibench doorprof`: where the structural door shuts on unrelated pairs
+/// (each eval base against 60 eval distractors), what each step costs, and
+/// the cheapest orders of the steps on those pairs.
+fn cmd_doorprof(c: &Corpus, xb: &XBound) {
+    use paph::x::compare::{door_step, DOOR_ORDER, DOOR_LOCAL_BOUND};
+    use paph::x::structural::*;
+    let base = &xb.base;
+    let mut d0 = vec![0u8; 128 * 128];
+    let label = |k: usize| -> &'static str { if k == DOOR_LOCAL_BOUND || k == 7 { "local bound" } else { CH_NAMES[k] } };
+    let mut pairs: Vec<(XPrepared, XPrepared)> = Vec::new();
+    for b in 0..c.nb {
+        if !is_eval_base(b) {
+            continue;
+        }
+        let i = c.at[&(b, 0)];
+        for k in 0..60 {
+            let d = c.ev_d[(b as usize * 7919 + k * 104_729) % c.ev_d.len()];
+            let q = XPrepared::new(Prepared::new(&c.recs[i].t1, Some(&c.recs[i].t2)).unwrap(), xb);
+            let x = XPrepared::new(Prepared::new(&c.recs[d].t1, Some(&c.recs[d].t2)).unwrap(), xb);
+            if canon_swapped(&q.p, &x.p) {
+                pairs.push((x, q));
+            } else {
+                pairs.push((q, x));
+            }
+        }
+    }
+    let mut at = [0usize; 10];
+    let t0 = Instant::now();
+    for (a, b) in pairs.iter() {
+        at[door_step(a, b, base, &mut d0).1] += 1;
+    }
+    let us = t0.elapsed().as_secs_f64() * 1e6 / pairs.len() as f64;
+    println!("The structural door on {} unrelated pairs: {:.1} µs a pair natively, open on {}.", pairs.len(), us, at[9]);
+    println!("  shut before any channel: not certifiable {}, the bar out of reach {}", at[0], at[1]);
+    for (k, &st) in DOOR_ORDER.iter().enumerate() {
+        println!("  shut after {:<12} {}", label(st), at[2 + k]);
+    }
+    // every step on every certifiable pair: per-call cost, and every order
+    let mut rows: Vec<([i64; 7], [bool; 7], i64, i64, [f64; 8])> = Vec::new();
+    for (a, b) in pairs.iter() {
+        let mut s = Structural::new(a, b, base);
+        if !s.measurable[CH_LOCAL] || s.secondaries() < base.min_secondaries.max(0) as usize {
+            continue;
+        }
+        let lh0 = s.local_hi;
+        let mut tm = [0f64; 8];
+        for ch in [CH_DCT, CH_SHAPE, CH_TOPOLOGY, CH_RUNS, CH_PALETTE, CH_SILHOUETTE] {
+            let tc = Instant::now();
+            s.compute(ch, a, b, base, &mut d0);
+            tm[ch] = tc.elapsed().as_secs_f64() * 1e6;
+        }
+        let tc = Instant::now();
+        s.bound_local(a, b, base, &mut d0);
+        tm[7] = tc.elapsed().as_secs_f64() * 1e6;
+        rows.push((s.value, s.measurable, lh0, s.local_hi, tm));
+    }
+    let n = rows.len() as f64;
+    let mean = |k: usize| rows.iter().map(|r| r.4[k]).sum::<f64>() / n;
+    println!("Per call, over the {} certifiable pairs (µs): runs {:.1}, silhouette {:.1}, local bound {:.1}, topology {:.1}, shape {:.1}, dct {:.1}, palette {:.1}.", rows.len(), mean(CH_RUNS), mean(CH_SILHOUETTE), mean(7), mean(CH_TOPOLOGY), mean(CH_SHAPE), mean(CH_DCT), mean(CH_PALETTE));
+    let bar = (base.thresholds[1] as i64).max(base.thresholds[4] as i64);
+    let w = |k: usize| -> i64 {
+        let idx = match k { CH_LOCAL => 0, CH_SHAPE => 1, CH_TOPOLOGY => 2, CH_RUNS => 3, CH_DCT => 4, CH_PALETTE => 5, _ => 6 };
+        base.weights[idx] as i64
+    };
+    let simulate = |ord: &[usize]| -> f64 {
+        let mut cost = 0f64;
+        for r in rows.iter() {
+            let (vals, meas, lh0, lh1, tm) = (r.0, r.1, r.2, r.3, r.4);
+            let mut known = [false; 7];
+            let mut lhi = lh0;
+            let bound = |known: &[bool; 7], lhi: i64| -> i64 {
+                let (mut hi, mut wt) = (0i64, 0i64);
+                for k in 0..7 {
+                    if meas[k] {
+                        wt += w(k);
+                        hi += w(k) * if k == CH_LOCAL { lhi } else if known[k] { vals[k] } else { 10_000 };
+                    }
+                }
+                if wt == 0 { 0 } else { hi / wt }
+            };
+            if bound(&known, lhi) < bar {
+                continue;
+            }
+            for &st in ord {
+                if st == 7 {
+                    cost += tm[7];
+                    lhi = lh1;
+                } else {
+                    cost += tm[st];
+                    known[st] = true;
+                }
+                if bound(&known, lhi) < bar {
+                    break;
+                }
+            }
+        }
+        cost / n
+    };
+    let shipped: Vec<usize> = DOOR_ORDER.iter().map(|&k| if k == DOOR_LOCAL_BOUND { 7 } else { k }).collect();
+    let cascade = vec![CH_RUNS, CH_PALETTE, CH_SILHOUETTE, CH_TOPOLOGY, 7, CH_SHAPE, CH_DCT];
+    println!("Expected cost per certifiable pair: the shipped order {:.1} µs; the cascade's own order {:.1} µs.", simulate(&shipped), simulate(&cascade));
+    let mut perm = vec![CH_DCT, CH_SHAPE, CH_TOPOLOGY, CH_RUNS, CH_PALETTE, CH_SILHOUETTE, 7usize];
+    let mut all: Vec<(f64, Vec<usize>)> = vec![(simulate(&perm), perm.clone())];
+    let np = perm.len();
+    let mut cidx = vec![0usize; np];
+    let mut i = 0;
+    while i < np {
+        if cidx[i] < i {
+            if i % 2 == 0 {
+                perm.swap(0, i);
+            } else {
+                perm.swap(cidx[i], i);
+            }
+            all.push((simulate(&perm), perm.clone()));
+            cidx[i] += 1;
+            i = 0;
+        } else {
+            cidx[i] = 0;
+            i += 1;
+        }
+    }
+    all.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    for (c_, o) in all.iter().take(3) {
+        println!("  the cheapest orders: {} — {:.1} µs", o.iter().map(|&k| label(k)).collect::<Vec<_>>().join(", "), c_);
+    }
+}
+
+/// The X profile a command runs under: the shipped X2, or X1 with `--x1`.
+fn xbound_for(args: &[String]) -> XBound {
+    if args.iter().any(|a| a == "--x1") {
+        return XBound::x1();
+    }
+    let mut xp = XProfile::x2();
+    // experiments: --bars l,b,g (route lower bars), --nodoor
+    if let Some(i) = args.iter().position(|a| a == "--bars") {
+        let v: Vec<i32> = args[i + 1].split(',').map(|x| x.parse().unwrap()).collect();
+        xp.t_local_low = v[0];
+        xp.t_band_low = v[1];
+        xp.t_global_low = v[2];
+        eprintln!("route bars overridden: {:?}", v);
+    }
+    if args.iter().any(|a| a == "--nodoor") {
+        xp.gate_door = 0;
+    }
+    XBound::new(Profile::cal004(), xp)
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let dir = sarg(&args, "--dir", "target/si-corpus");
@@ -1238,22 +1613,31 @@ fn main() {
             println!("hashed {n} works ({nb} bases × {} variants + {nd} distractors) in {:.1} s → {dir}/{name}", TRANSFORMS.len(), t0.elapsed().as_secs_f64());
         }
         "fit" => {
-            let xb = XBound::shipped();
+            let xb = xbound_for(&args);
             let c = Corpus::open(&dir, &xb);
-            cmd_fit(&c, &sarg(&args, "--out", "../docs/calibration/SI1-PROVISIONAL.psi"));
+            let out = sarg(&args, "--out", &format!("../docs/calibration/{}.psi", si_name_for(&xb)));
+            cmd_fit(&c, &xb, &out);
         }
         "lost" => {
             // comparator-42 Copy pairs XRank does not read Copy when shown the
-            // target alone: which stage lets them go
-            let xb = XBound::shipped();
+            // target alone (both arrival orders): which stage lets them go,
+            // what comparator 42 certified them on, and whether its own
+            // gated rank screens them out too
+            let xb = xbound_for(&args);
             let c = Corpus::open(&dir, &xb);
             let cfg = Config::default();
             let base = Profile::cal004();
             let bcfg = paph::v4::bind(&cfg, &base);
             let mut ctx = XCtx::new();
             let mut rs = RankScratch::new();
-            let mut n = 0;
-            let mut lost = 0;
+            let mut d0 = vec![0u8; 128 * 128];
+            let opts = if args.iter().any(|a| a == "--nogate") { XRankOptions { gate: false, ..XRankOptions::default() } } else { XRankOptions::default() };
+            // under another profile than X1, also name the queries X1 loses
+            // and this profile keeps, and what keeps them
+            let x1b = XBound::x1();
+            let (mut ctx1, mut rs1) = (XCtx::new(), RankScratch::new());
+            const CLASS: [&str; 4] = ["Reject", "Defer", "Fast", "Absent"];
+            let (mut n, mut lost) = (0, 0);
             for b in 0..c.nb {
                 for t in 1..TRANSFORMS.len() as i32 {
                     if !c.copy(b, t) {
@@ -1264,56 +1648,88 @@ fn main() {
                         let q = XPrepared::new(Prepared::new(&c.recs[qi].t1, Some(&c.recs[qi].t2)).unwrap(), &xb);
                         let x = XPrepared::new(Prepared::new(&c.recs[ti].t1, Some(&c.recs[ti].t2)).unwrap(), &xb);
                         let mut out = vec![0i32; XRANK_FIELDS];
-                        xrank(&q, &[Some(&x)], &cfg, &xb, &XRankOptions::default(), &mut ctx, &mut rs, &mut out);
+                        xrank(&q, &[Some(&x)], &cfg, &xb, &opts, &mut ctx, &mut rs, &mut out);
                         n += 1;
-                        if out[0] != 3 && out[0] != 4 {
-                            lost += 1;
-                            // and what comparator 42 certified the pair on
-                            let (pa, pb) = (&c.sides[i], &c.sides[j]);
-                            let swapped = canon_swapped(pa, pb);
-                            let (ca, cb) = if swapped { (pb, pa) } else { (pa, pb) };
-                            let mut pc = PairCtx::new(ca, cb);
-                            let v = compare_in(&mut pc, swapped, &bcfg, &base, Reading::Lean).base;
-                            println!("base {b} {:<10} state {:>2} execution {} screen {} route class {} (local {}, band {}, global {}) pools {}/{}; comparator 42: {} — {} {:?} (structural {}, geometry evidence {}, inliers {})", TRANSFORMS[t as usize], out[0], out[1], out[2], out[6], out[3], out[4], out[5], out[7], out[8], v.verdict, v.class, v.basis, v.structural, v.geometry_evidence, v.total_inliers);
+                        if out[0] == 3 || out[0] == 4 {
+                            if xb.xid != x1b.xid {
+                                let q1 = XPrepared::new(Prepared::new(&c.recs[qi].t1, Some(&c.recs[qi].t2)).unwrap(), &x1b);
+                                let x1 = XPrepared::new(Prepared::new(&c.recs[ti].t1, Some(&c.recs[ti].t2)).unwrap(), &x1b);
+                                let mut o1 = vec![0i32; XRANK_FIELDS];
+                                xrank(&q1, &[Some(&x1)], &cfg, &x1b, &opts, &mut ctx1, &mut rs1, &mut o1);
+                                if !(o1[0] == 3 || o1[0] == 4) {
+                                    let s = paph::x::compare::xscreen(&q, &x, &cfg, &xb, &mut ctx);
+                                    println!("lost under X1, kept: base {b} {:<10} route class {} (X1: {}), pair screen {:?} ({}), pools {}/{}, state {}", TRANSFORMS[t as usize], CLASS[out[6].clamp(0, 3) as usize], CLASS[o1[6].clamp(0, 3) as usize], s.state, s.reason, out[7], out[8], out[0]);
+                                }
+                            }
+                            continue;
+                        }
+                        lost += 1;
+                        let (pa, pb) = (&c.sides[i], &c.sides[j]);
+                        let swapped = canon_swapped(pa, pb);
+                        let (ca, cb) = if swapped { (pb, pa) } else { (pa, pb) };
+                        let mut pc = PairCtx::new(ca, cb);
+                        let v = compare_in(&mut pc, swapped, &bcfg, &base, Reading::Lean).base;
+                        println!("base {b} {:<10} state {:>2} execution {} screen {} route class {} (local {}, band {}, global {}) pools {}/{}, keypoints {}/{}; comparator 42: {} — {} {:?} (structural {}, geometry evidence {}, inliers {})", TRANSFORMS[t as usize], out[0], out[1], out[2], out[6], out[3], out[4], out[5], out[7], out[8], pa.kp.len(), pb.kp.len(), v.verdict, v.class, v.basis, v.structural, v.geometry_evidence, v.total_inliers);
+                        use paph::x::structural::*;
+                        let (xa, xc) = if canon_swapped(&q.p, &x.p) { (&x, &q) } else { (&q, &x) };
+                        let mut st = Structural::new(xa, xc, &base);
+                        for k in 0..7 {
+                            st.compute(k, xa, xc, &base, &mut d0);
+                        }
+                        println!("    channels (dct, local, shape, topology, runs, palette, silhouette; -1 not measurable) {:?}", (0..7).map(|k| if st.measurable[k] { st.value[k] } else { -1 }).collect::<Vec<_>>());
+                        let sc = paph::v42::screen_v42_prepared(&c.sides[i], &c.sides[j], &cfg, &base);
+                        println!("    comparator 42's stage-1 screen (its rank's gate): {} (pools {}/{})", if sc.pass { "pass" } else { "screened out" }, sc.pool_direct, sc.pool_mirror);
+                    }
+                }
+            }
+            println!("{lost} of {n} comparator-42 Copy queries not read Copy by XRank alone ({})", xb.xp.name_str());
+            // comparator 42's own gated rank (`rank` with the gate on) drops a
+            // pair its stage-1 screen rejects; the screen reads the pair in
+            // canonical order, so one count per pair
+            let mut by_t = vec![(0usize, 0usize); TRANSFORMS.len()];
+            let (mut thin, mut fast) = (0usize, 0usize);
+            for b in 0..c.nb {
+                for t in 1..TRANSFORMS.len() as i32 {
+                    if c.copy(b, t) {
+                        let (i, j) = (c.at[&(b, 0)], c.at[&(b, t)]);
+                        let (pa, pb) = (&c.sides[i], &c.sides[j]);
+                        let sc = paph::v42::screen_v42_prepared(pa, pb, &cfg, &base);
+                        by_t[t as usize].0 += 1;
+                        if !sc.pass {
+                            by_t[t as usize].1 += 1;
+                            thin += ((pa.kp.len().min(pb.kp.len()) as i64) < bcfg.geo_min_corr as i64) as usize;
+                            let xa = XPrepared::new(Prepared::new(&c.recs[i].t1, Some(&c.recs[i].t2)).unwrap(), &xb);
+                            let xc = XPrepared::new(Prepared::new(&c.recs[j].t1, Some(&c.recs[j].t2)).unwrap(), &xb);
+                            fast += (paph::x::compare::xscreen(&xa, &xc, &cfg, &xb, &mut ctx).route_class == paph::x::route::RouteClass::Fast) as usize;
                         }
                     }
                 }
             }
-            println!("{lost} of {n} comparator-42 Copy queries not read Copy by XRank alone");
+            let (np, ns): (usize, usize) = (by_t.iter().map(|x| x.0).sum(), by_t.iter().map(|x| x.1).sum());
+            let per: Vec<String> = by_t.iter().enumerate().filter(|(_, x)| x.1 > 0).map(|(t, x)| format!("{} {} of {}", TRANSFORMS[t], x.1, x.0)).collect();
+            println!("comparator 42's own gated rank (its stage-1 screen, either profile) screens out {ns} of {np} comparator-42 Copy pairs, {thin} of them because a side has fewer keypoints than geo_min_corr ({}) and so can never pass; XRank's route reads {fast} of the {ns} as Fast under {}, and does not gate those: {}", bcfg.geo_min_corr, xb.xp.name_str(), per.join(", "));
+        }
+        "doorprof" => {
+            let xb = xbound_for(&args);
+            let c = Corpus::open(&dir, &xb);
+            cmd_doorprof(&c, &xb);
         }
         "route" => {
-            // the XRoute class of every comparator-42 Copy pair (all bases):
-            // is the route class alone a safe filter?
-            let xb = XBound::shipped();
+            let xb = xbound_for(&args);
             let c = Corpus::open(&dir, &xb);
-            let mut rej = vec![0usize; TRANSFORMS.len()];
-            let mut tot = vec![0usize; TRANSFORMS.len()];
-            for b in 0..c.nb {
-                for t in 1..TRANSFORMS.len() as i32 {
-                    if !c.copy(b, t) {
-                        continue;
-                    }
-                    let (i, j) = (c.at[&(b, 0)], c.at[&(b, t)]);
-                    let s = paph::x::route::route_score(&c.routes[i], &c.routes[j]);
-                    tot[t as usize] += 1;
-                    if paph::x::route::route_class(&s, &xb.xp) == paph::x::route::RouteClass::Reject {
-                        rej[t as usize] += 1;
-                    }
-                }
-            }
-            println!("XRoute class Reject on comparator-42 Copy pairs (X1 bars local {} / band {} / global {}):", xb.xp.t_local_low, xb.xp.t_band_low, xb.xp.t_global_low);
-            for t in 1..TRANSFORMS.len() {
-                if tot[t] > 0 {
-                    println!("  {:<11} {:>3} of {:>3}", TRANSFORMS[t], rej[t], tot[t]);
-                }
-            }
-            println!("  total       {} of {}", rej.iter().sum::<usize>(), tot.iter().sum::<usize>());
+            cmd_route(&c, &xb, &args);
         }
         "eval" => {
-            let xb = XBound::shipped();
+            let xb = xbound_for(&args);
             let prof = match args.iter().position(|a| a == "--profile") {
                 Some(i) => SiProfile::decode(&std::fs::read(&args[i + 1]).expect("read profile")).expect("decode profile"),
-                None => SiProfile::si1(),
+                None => {
+                    if xb.xid == XProfile::x1().id() {
+                        SiProfile::si1()
+                    } else {
+                        SiProfile::si2()
+                    }
+                }
             };
             let c = Corpus::open(&dir, &xb);
             cmd_eval(&c, &prof, &xb, &args);

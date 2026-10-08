@@ -163,6 +163,57 @@ fn check_profiles(a: &XPrepared, b: &XPrepared, xb: &XBound) -> Option<&'static 
     None
 }
 
+/// The structural door (profile `gate_door`, X2): could the structure of
+/// this pair still certify a Copy on its own — the lattice's recolour arm:
+/// the local channel measurable, at least `min_secondaries` other channels,
+/// and the weighted structural score at or above both the strong and the
+/// solo bar — with nothing from the geometry?  A screen exit sees a pair
+/// whose anchor-tier pools are thin, which X1 already read as the geometric
+/// arms being out of reach; the door answers, exactly, for the one arm that
+/// needs no geometry.  The door shuts as soon as
+/// the score's upper bound (every unknown channel at its maximum, the local
+/// channel at its bound) falls below the bar, and stays open only when the
+/// six secondaries and the local channel's edge-set bound all leave the bar
+/// in reach.  The steps go in a near-cheapest order on the PAPH-SI corpus'
+/// unrelated pairs (`sibench doorprof`: 20.6 µs per certifiable pair
+/// natively, within 0.1 µs of the cheapest of all 5,040 orders, against
+/// 28.4 µs in the cascade's own order): the two nearly free
+/// channels, the local channel's bound — the heaviest weight, for the price
+/// of 16k popcounts — then the rest.  `true`: open — the pair must be compared.
+pub fn structural_door(ca: &XPrepared, cb: &XPrepared, base: &Profile, d0: &mut [u8]) -> bool {
+    door_step(ca, cb, base, d0).0
+}
+
+/// The local channel's edge-set bound, as a step of `DOOR_ORDER`.
+pub const DOOR_LOCAL_BOUND: usize = usize::MAX;
+/// The door's steps, cheapest-to-shut first.
+pub const DOOR_ORDER: [usize; 7] = [CH_RUNS, CH_SILHOUETTE, DOOR_LOCAL_BOUND, CH_TOPOLOGY, CH_SHAPE, CH_DCT, CH_PALETTE];
+
+/// The door and the step that settled it: 0 not certifiable, 1 the bar out
+/// of reach before any channel, 2 + k after the k-th step of `DOOR_ORDER`,
+/// 9 open.  (`sibench doorprof` reads the steps.)
+pub fn door_step(ca: &XPrepared, cb: &XPrepared, base: &Profile, d0: &mut [u8]) -> (bool, usize) {
+    let mut s = Structural::new(ca, cb, base);
+    if !s.measurable[CH_LOCAL] || s.secondaries() < base.min_secondaries.max(0) as usize {
+        return (false, 0);
+    }
+    let bar = (base.thresholds[1] as i64).max(base.thresholds[4] as i64);
+    if s.bounds(base).1 < bar {
+        return (false, 1);
+    }
+    for (i, k) in DOOR_ORDER.into_iter().enumerate() {
+        if k == DOOR_LOCAL_BOUND {
+            s.bound_local(ca, cb, base, d0);
+        } else {
+            s.compute(k, ca, cb, base, d0);
+        }
+        if s.bounds(base).1 < bar {
+            return (false, 2 + i);
+        }
+    }
+    (true, 9)
+}
+
 /// §12 — the pair screen: route, then the anchor tier's sparse pools.
 /// Never a verdict: `Reject` means the expensive comparator is not worth
 /// spending here under the profile; `Defer` means it was not eliminated.
@@ -193,7 +244,11 @@ pub fn xscreen(a: &XPrepared, b: &XPrepared, cfg: &Config, xb: &XBound, ctx: &mu
     } else if rc == RouteClass::Fast {
         (ScreenState::Pass, "route")
     } else if rc == RouteClass::Reject && best as i32 <= xp.defer_pool_max {
-        (ScreenState::Reject, "route+sparse")
+        if xp.gate_door != 0 && structural_door(ca, cb, base, &mut ctx.d0) {
+            (ScreenState::Defer, "structure")
+        } else {
+            (ScreenState::Reject, "route+sparse")
+        }
     } else {
         (ScreenState::Defer, "thin")
     };
@@ -492,8 +547,19 @@ pub fn xcompare_in(
     // Related or Suspected there (a dithered or heavily resampled copy 42
     // only suspects).  The safe policy promises 42's states, so it takes
     // the sparse path instead and reads what 42 reads; the profile knob
-    // turns the shortcut off for the fast path too
-    if rc == RouteClass::Reject && cd.count.max(cm.count) as i32 <= xp.defer_pool_max && xp.route_reject_unrelated == 1 && policy == POLICY_FAST {
+    // turns the shortcut off for the fast path too.  The bars were
+    // calibrated on one corpus, and a route is a sketch: on the PAPH-SI
+    // corpus X1's put 49 of 976 copies in the Reject class, two of them
+    // with empty pools — a channel swap and a palette shuffle 42 certifies
+    // on structure alone.
+    // Under a profile with `gate_door` the shortcut also needs the door
+    // shut
+    if rc == RouteClass::Reject
+        && cd.count.max(cm.count) as i32 <= xp.defer_pool_max
+        && xp.route_reject_unrelated == 1
+        && policy == POLICY_FAST
+        && !(xp.gate_door != 0 && structural_door(ca, cb, base, &mut ctx.d0))
+    {
         r.stats = ctx.m.stats;
         r.verdict = "Unrelated";
         r.class = "no agreement above chance (route)".into();

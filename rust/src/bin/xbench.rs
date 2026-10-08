@@ -1,15 +1,20 @@
 //! The PAPH-X benchmark and acceptance harness (specification §33–§35).
 //!
 //!     xbench [--quick] [--calibrate] [--noreject] [--explain] [--table] [--dump DIR]
-//!            [--profile out.pxcl] [--xprofile in.pxcl] [--json out.json]
+//!            [--profile out.pxcl] [--xprofile in.pxcl] [--x1] [--json out.json]
+//!            [--dump-route out.csv]
+//!
+//! Runs under the shipped X2-PROVISIONAL, or 1.0.0's X1-PROVISIONAL with
+//! `--x1`; `--dump-route` writes every pair's route reading and anchor pool.
 //!
 //! Builds the synthetic corpus of §33.1 from the engine's own generators
 //! (`synth.rs` — the same pictures the equivalence digest hashes), runs
 //! comparator 42 and PAPH-X over every pair class of §33.2, and reports the
 //! metrics of §33.3: percentiles, allocations, full-Hamming pairs before and
 //! after, fallback rate, and the copy-recall / precision agreement between
-//! the two.  `--calibrate` derives the route bars of profile X1 from the
-//! corpus (no comparator-42 Copy may be rejected) and prints them.
+//! the two.  `--calibrate` derives the route bars of the profile it runs
+//! under from the corpus (no comparator-42 Copy may be rejected) and prints
+//! them; X1's were derived so, and X2 keeps them.
 //!
 //! Nothing printed here is a claim until it is printed here (§41.7).
 
@@ -284,7 +289,13 @@ fn main() {
     let cfg = Config::default();
     let mut xp = match xp_in {
         Some(p) => XProfile::decode(&std::fs::read(p).expect("read xprofile")).expect("decode xprofile"),
-        None => XProfile::x1(),
+        None => {
+            if args.iter().any(|a| a == "--x1") {
+                XProfile::x1()
+            } else {
+                XProfile::x2()
+            }
+        }
     };
     // overrides for experiments: --cert N (certificate inlier floor),
     // --cells N (certificate spread), --bars l,b,g (route lower bars)
@@ -874,6 +885,16 @@ fn main() {
             println!("    {},", table[p * 12..p * 12 + 12].iter().map(|b| b.to_string()).collect::<Vec<_>>().join(", "));
         }
         println!("];");
+    }
+
+    // the route readings of every pair, for a joint calibration
+    if let Some(i) = args.iter().position(|a| a == "--dump-route") {
+        use std::io::Write;
+        let mut f = std::fs::File::create(&args[i + 1]).unwrap();
+        writeln!(f, "class,positive,copy,local,band,global,meas,pool").unwrap();
+        for r in recs.iter() {
+            writeln!(f, "{},{},{},{},{},{},{},{}", r.class, r.positive as i32, is_copy(r.v42) as i32, r.route.local, r.route.band, r.route.global, r.route.measurable, r.pool).unwrap();
+        }
     }
 
     // calibration

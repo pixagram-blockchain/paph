@@ -283,15 +283,29 @@ impl SiProfile {
         hex(&self.id()[..8])
     }
 
-    /// The shipped profile: SI1-PROVISIONAL, fitted by `sibench fit` on the
-    /// synthetic corpus and bound to X1-PROVISIONAL.
+    /// SI1-PROVISIONAL, fitted by `sibench fit` on the synthetic corpus and
+    /// bound to X1-PROVISIONAL — 1.1.0's profile.
     pub fn si1() -> SiProfile {
         SiProfile::decode(SI1).expect("the shipped SI1 profile decodes")
     }
+
+    /// SI2-PROVISIONAL: SI1's fit bound to X2-PROVISIONAL.  Route derivation
+    /// 2 changes the route's global words, not the MinHash lanes SI bands,
+    /// so the codebooks, weights, threshold and budget are SI1's.
+    pub fn si2() -> SiProfile {
+        SiProfile::decode(SI2).expect("the shipped SI2 profile decodes")
+    }
+
+    /// The shipped default: SI2, bound to the shipped X2.
+    pub fn shipped() -> SiProfile {
+        Self::si2()
+    }
 }
 
-/// SI1-PROVISIONAL (`docs/calibration/SI1-PROVISIONAL.psi`).
+/// SI1-PROVISIONAL (`docs/calibration/SI1-PROVISIONAL.psi`), bound to X1.
 pub const SI1: &[u8] = include_bytes!("../../../../docs/calibration/SI1-PROVISIONAL.psi");
+/// SI2-PROVISIONAL (`docs/calibration/SI2-PROVISIONAL.psi`), bound to X2.
+pub const SI2: &[u8] = include_bytes!("../../../../docs/calibration/SI2-PROVISIONAL.psi");
 
 #[cfg(test)]
 mod tests {
@@ -326,5 +340,20 @@ mod tests {
         let mut q = p.clone();
         q.book[1].w[2] += 1;
         assert_ne!(q.id(), p.id(), "the weights are covered by the identity");
+    }
+
+    #[test]
+    fn si2_is_si1_bound_to_x2() {
+        let (s1, s2) = (SiProfile::si1(), SiProfile::si2());
+        assert_eq!(SiProfile::shipped(), s2);
+        assert_eq!(s2.encode(), SI2);
+        assert_eq!(s2.xid, XProfile::x2().id(), "SI2 bands the X2 route lanes");
+        assert_eq!(s2.name_str(), "SI2-PROVISIONAL");
+        // everything but the name and the binding is SI1's
+        let mut t = s2.clone();
+        t.name = s1.name;
+        t.xid = s1.xid;
+        assert_eq!(t, s1);
+        println!("{} id {}", s2.name_str(), hex(&s2.id()));
     }
 }

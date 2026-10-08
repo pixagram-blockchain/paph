@@ -574,24 +574,29 @@ pub struct LocalBound {
     pub cols: usize,
 }
 
-pub fn local_bound(a: &XPrepared, b: &XPrepared, p: &Profile, d0: &mut [u8]) -> LocalBound {
+/// Which rows and columns of the pair carry an edge (Hamming at most `t`).
+fn edges_all(a: &XPrepared, b: &XPrepared, t: i32, row_has: &mut [bool; 128], col_has: &mut [bool; 128]) {
     let (x, y) = (&a.p.bag, &b.p.bag);
-    let (n, m) = (x.n, y.n);
-    let t = p.hamming_t;
-    let mut row_has = [false; 128];
-    let mut col_has = [false; 128];
+    let (n, m) = (x.n.min(128), y.n.min(128));
     for i in 0..n {
         let ci = ((x.hi[i] as u64) << 32) | x.lo[i] as u64;
         for j in 0..m {
             let cj = ((y.hi[j] as u64) << 32) | y.lo[j] as u64;
-            let d = (ci ^ cj).count_ones() as u8;
-            d0[i * m + j] = d;
-            if (d as i32) <= t {
+            if (ci ^ cj).count_ones() as i32 <= t {
                 row_has[i] = true;
                 col_has[j] = true;
             }
         }
     }
+}
+
+pub fn local_bound(a: &XPrepared, b: &XPrepared, p: &Profile, d0: &mut [u8]) -> LocalBound {
+    let _ = d0;
+    let (n, m) = (a.p.bag.n, b.p.bag.n);
+    let t = p.hamming_t;
+    let mut row_has = [false; 128];
+    let mut col_has = [false; 128];
+    edges_all(a, b, t, &mut row_has, &mut col_has);
     let (mut rows, mut cols) = (0usize, 0usize);
     let (mut wr, mut wc) = (0i64, 0i64);
     for i in 0..n {

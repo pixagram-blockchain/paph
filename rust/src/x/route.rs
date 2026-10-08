@@ -14,7 +14,21 @@
 //!            mirror-invariant by construction;
 //!   global   four 64-bit words of coarse structure built to be invariant
 //!            under D4 and inversion: DCT energy layout, run-length classes,
-//!            luminance-adjacency topology, region shape classes.
+//!            luminance-adjacency topology, region shape classes.  They are
+//!            invariant only as far as the Tier-1 sections they read are
+//!            equivariant: the DCT section is not, on canvases whose sides
+//!            are not multiples of 16 (the 16 x 16 thumbnail's cells do not
+//!            commute with a flip) and under quarter turns (integer DCT
+//!            rounding), so G0 can differ on a mirrored or rotated copy.
+//!            Route derivation 2 (profile X2) removes the two defects that
+//!            were the route's own: G1's diagonal run histogram (a mirror
+//!            sends the main diagonal to the anti-diagonal, which the wire
+//!            does not hold) and G3's region order (area ties broken by
+//!            position).  G3 still moves where the shapes section's own
+//!            grid (about ceil(long side / 128) px a cell, edges rounded
+//!            down from the top-left corner) does not commute with the
+//!            symmetry, on canvases longer than 128 px, and where a tie in
+//!            area decides which region is kept eighth.
 //!
 //! The readings are never collapsed into one number (§6.5): the screen is a
 //! rule over the three, and `DEFER` exists so that a cheap screen cannot
@@ -24,7 +38,7 @@
 //! one query is compared against sixteen candidates per vector instruction
 //! (§7, §16.3).  The vector kernels have scalar twins a test holds equal.
 
-use super::profile::{mix64, Seq, XProfile, BAND_LANES, GLOBAL_WORDS, LOCAL_LANES};
+use super::profile::{mix64, Seq, XProfile, BAND_LANES, GLOBAL_WORDS, LOCAL_LANES, ROUTE_DERIVATION_2};
 use crate::prepared::Prepared;
 use crate::wire::{F_FLAT, Tier1};
 
@@ -106,6 +120,17 @@ fn minhash_into(elems: &[u64], salts: &[u64], out: &mut [u8]) {
 /// signs and transposes swap (u, v), inversion negates every sign: the
 /// magnitude bit symmetrised over (u, v) and (v, u) is invariant under all
 /// sixteen.  The 64 lowest-frequency symmetric cells, by (u + v, u).
+///
+/// Invariant, that is, under the symmetries of the stored block — which is
+/// itself not the symmetric image of the original's when the copy's
+/// thumbnail cells fall elsewhere: a flip moves the cell edges ⌊i·w/16⌋ by
+/// a pixel unless 16 divides the side, and a quarter turn swaps the two
+/// rounded passes of the integer DCT.  Magnitude bits near the block's
+/// median then flip (2.4–13.7 % per low-frequency bit on the PAPH-SI
+/// corpus' mirrored and rotated copies, `sibench route`), so a word read
+/// from this section is invariant only where those bits are.  The route
+/// reads G0 as an overlap, which tolerates that; an exact word needs
+/// symmetric sampling in the hasher.
 fn g0_dct(t: &Tier1) -> u64 {
     if t.flags & F_FLAT != 0 {
         return 0;
@@ -160,6 +185,33 @@ fn g1_runs(t: &Tier1) -> u64 {
     out
 }
 
+/// G1, route derivation 2 — run-length classes, D4-exact.  The low half
+/// as G1 (horizontal and vertical averaged); the high half, where G1 held
+/// the main-diagonal histogram, holds |horizontal − vertical| per bin: a
+/// transpose exchanges the two and a flip keeps each, so the anisotropy is
+/// invariant under all eight where the diagonal was not.
+fn g1_runs_v2(t: &Tier1) -> u64 {
+    let r = t.sec("runs");
+    let q = |v: i64| -> u64 {
+        if v == 0 {
+            0
+        } else if v < 16 {
+            1
+        } else if v < 64 {
+            2
+        } else {
+            3
+        }
+    };
+    let mut out = 0u64;
+    for i in 0..16 {
+        let (h, v) = (r[i] as i64, r[16 + i] as i64);
+        out |= q((h + v) / 2) << (2 * i);
+        out |= q((h - v).abs()) << (32 + 2 * i);
+    }
+    out
+}
+
 /// G2 — luminance-adjacency topology.  Each RAG entry is a pair of quantile
 /// bytes; inversion maps (qa, qb) to (255-qb, 255-qa), under which the gap
 /// |qa-qb| and the level min(qa, 255-qb) are both invariant.  The 24 most
@@ -190,9 +242,32 @@ fn g2_rag(t: &Tier1) -> u64 {
 /// isoperimetric class, the bounding-box aspect class symmetrised over a
 /// transpose, and the hole count — eight bits per region, eight regions.
 fn g3_shapes(t: &Tier1) -> u64 {
+    let mut out = 0u64;
+    for (i, c) in region_codes(t).iter().enumerate() {
+        out |= (*c as u64) << (8 * i);
+    }
+    out
+}
+
+/// G3, route derivation 2 — the same eight-bit region codes as a sorted
+/// list, largest code first.  The shapes section orders regions by area and
+/// breaks ties by position, which a flip or a quarter turn moves; the
+/// multiset of codes does not care.
+fn g3_shapes_v2(t: &Tier1) -> u64 {
+    let mut c = region_codes(t);
+    c.sort_unstable_by(|a, b| b.cmp(a));
+    let mut out = 0u64;
+    for (i, v) in c.iter().enumerate() {
+        out |= (*v as u64) << (8 * i);
+    }
+    out
+}
+
+/// The region codes of the stored regions, in stored order.
+fn region_codes(t: &Tier1) -> Vec<u8> {
     let s = t.sec("shapes");
     let n = t.count("shapes").min(8);
-    let mut out = 0u64;
+    let mut out = Vec::with_capacity(n);
     for i in 0..n {
         let o = i * 41;
         let area = u32::from_le_bytes([s[o], s[o + 1], s[o + 2], s[o + 3]]) as i64;
@@ -204,7 +279,7 @@ fn g3_shapes(t: &Tier1) -> u64 {
         let asym = if aspect > 0 { aspect.max(65536 / aspect) } else { 256 };
         let ac = [320i64, 410, 512, 768, 1280, 2048, 4096].iter().filter(|&&t| asym >= t).count() as u64;
         let hc = holes.min(3);
-        out |= (ic | (ac << 3) | (hc << 6)) << (8 * i);
+        out.push((ic | (ac << 3) | (hc << 6)) as u8);
     }
     out
 }
@@ -279,9 +354,13 @@ impl XRoute {
         } else {
             r.band_mh = [0xff; BAND_LANES];
         }
-        // global words
+        // global words, as the profile's route derivation reads them
         let t = &p.t1;
-        r.global = [g0_dct(t), g1_runs(t), g2_rag(t), g3_shapes(t)];
+        r.global = if xp.route_derivation >= ROUTE_DERIVATION_2 {
+            [g0_dct(t), g1_runs_v2(t), g2_rag(t), g3_shapes_v2(t)]
+        } else {
+            [g0_dct(t), g1_runs(t), g2_rag(t), g3_shapes(t)]
+        };
         if t.flags & F_FLAT == 0 {
             r.flags |= RF_GLOBAL;
         }
@@ -640,6 +719,7 @@ mod wasm_batch {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::prepared::Prepared;
 
     fn route(seed: u64, flags: u16) -> XRoute {
         let mut s = Seq(seed);
@@ -700,6 +780,48 @@ mod tests {
         // an absent family cannot certify and cannot reject on its own
         assert_eq!(route_class(&s(64, 0, 0, RF_BAND), &p), RouteClass::Reject);
         assert_eq!(route_class(&s(0, 0, 256, RF_GLOBAL), &p), RouteClass::Fast);
+    }
+
+    /// Route derivation 2's run-length and adjacency words are exactly
+    /// invariant under the square's symmetries (the runs and adjacency
+    /// sections are computed at full resolution); derivation 1's run-length
+    /// word is not, because its diagonal half moves under a flip.  The
+    /// region word, a sorted list in derivation 2, holds more often than
+    /// derivation 1's stored order but not always: the shapes section keeps
+    /// eight regions, breaks area ties for the eighth place by position, and
+    /// resamples canvases whose long side exceeds 128 pixels.
+    #[test]
+    fn derivation_2_words_are_d4_invariant() {
+        use crate::config::Config;
+        use crate::synth::{mirror, pixel_art, rot90, transpose};
+        use crate::wire::hash;
+        use crate::x::profile::XBound;
+        let cfg = Config::default();
+        let rot = crate::keypoints::RotCache::new(&crate::keypoints::pattern());
+        let (x1, x2) = (XBound::x1(), XBound::shipped());
+        let route = |im: &crate::synth::Img, xb: &XBound| -> XRoute {
+            let f = hash(&im.px, im.w, im.h, &cfg, &rot);
+            let p = Prepared::new(&f.t1, Some(&f.t2)).unwrap();
+            XRoute::build(&p, &xb.salts, &xb.xp)
+        };
+        let (mut n, mut g3_eq, mut g3_eq_x1, mut g1_moved_x1) = (0, 0, 0, 0);
+        for i in 0..12u64 {
+            let (w, h) = (40 + 7 * (i as usize % 9), 36 + 11 * (i as usize % 7));
+            let b = pixel_art(w, h, 900 + 37 * i, 3 + (i as usize * 5) % 14, (i % 3) as u8);
+            let (r1, r2) = (route(&b, &x1), route(&b, &x2));
+            for c in [mirror(&b), rot90(&b), rot90(&rot90(&b)), transpose(&b)] {
+                let (c1, c2) = (route(&c, &x1), route(&c, &x2));
+                n += 1;
+                assert_eq!(r2.global[1], c2.global[1], "G1 (derivation 2) moved on base {i}");
+                assert_eq!(r2.global[2], c2.global[2], "G2 moved on base {i}");
+                g3_eq += (r2.global[3] == c2.global[3]) as usize;
+                g3_eq_x1 += (r1.global[3] == c1.global[3]) as usize;
+                g1_moved_x1 += (r1.global[1] != c1.global[1]) as usize;
+            }
+        }
+        assert!(g3_eq >= g3_eq_x1 && g3_eq * 4 >= n * 3, "G3 equal on {g3_eq} of {n} (derivation 1: {g3_eq_x1})");
+        assert!(g1_moved_x1 > 0, "derivation 1's diagonal half never moved — the test lost its point");
+        println!("derivation 2: G1 and G2 equal on {n} of {n} D4 copies, G3 on {g3_eq} (derivation 1: {g3_eq_x1}); derivation 1's G1 moved on {g1_moved_x1}");
     }
 
     #[test]

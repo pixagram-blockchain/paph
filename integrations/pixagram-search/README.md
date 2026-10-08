@@ -71,6 +71,20 @@ queue consumer:  decode ─► stats ─► paph stage ─► (upscale ─► em
   uploads and reports are cached (per image, per image pair); the two routes that compare on
   demand share a per-client budget (`PAPH_LIMITER`, a `ratelimits` binding, 30 a minute).
 
+## Known gap: the screen gate
+
+The verify step ranks with comparator 42's stage-1 screen as a gate (`gate` in the store's
+find options, default true). The screen passes a pair only on `geo_min_corr` (8) keypoint
+correspondences or more, and a pair has no more correspondences than its smaller side has
+keypoints, so every copy of a work with fewer than 8 keypoints is dropped unverified, with some
+others whose pools stay thin. On the PAPH-SI corpus that is 178 of the 976 pairs comparator 42
+calls Copy, 164 of them for the keypoint count ([PAPH-X.md](../../docs/PAPH-X.md) §6, measured
+in `@pixagram/paph-x` 1.1.1). How many Pixagram works have so few keypoints has not been
+measured. The patch is unchanged. Passing `gate: false`
+compares every nominated candidate. Verifying with XRank under the X2 profile keeps those copies
+without comparing every candidate ([SEARCH.md](../../docs/SEARCH.md) §4), but the vendored module
+is 4.2.3's and has no XRank: it needs `@pixagram/paph-x` 1.1.1 or later in `vendor/paph/`.
+
 ## Deploy
 
 ```bash

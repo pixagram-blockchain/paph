@@ -4,7 +4,8 @@
 //! ```text
 //!   paph_siabi() -> 1            paph_sisig_bytes() -> 104
 //!   paph_siprofile(psi, n) -> handle | 0
-//!       an SI artefact, or null for the shipped SI1-PROVISIONAL; 0 when the
+//!       an SI artefact, or null for the shipped SI2-PROVISIONAL (bound to
+//!       X2; 1.1.0's SI1, bound to X1, is an artefact file); 0 when the
 //!       artefact does not decode
 //!   paph_siprofile_free(h)
 //!   paph_siprofile_bytes(h) -> block           the artefact's bytes
@@ -63,7 +64,7 @@ pub struct SiBound {
 #[no_mangle]
 pub extern "C" fn paph_siprofile(psi: *const u8, n: usize) -> *mut SiBound {
     let prof = if psi.is_null() || n == 0 {
-        SiProfile::si1()
+        SiProfile::shipped()
     } else {
         match SiProfile::decode(unsafe { std::slice::from_raw_parts(psi, n) }) {
             Ok(p) => p,

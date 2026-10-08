@@ -106,7 +106,7 @@ comparator-42 vocabulary; every report also carries an **execution state** (`FAS
 | export | |
 |---|---|
 | `paph_xabi() -> 1` | |
-| `paph_xprofile(prof, pxcl, n) -> handle \| 0` | `prof`: a comparator-42 profile handle (0 = the shipped CAL-004-PROPOSED); `pxcl`: an X profile artefact (`.pxcl` bytes), or null for the shipped X1-PROVISIONAL bound to that profile. 0 when the artefact does not decode — check it |
+| `paph_xprofile(prof, pxcl, n) -> handle \| 0` | `prof`: a comparator-42 profile handle (0 = the shipped CAL-004-PROPOSED); `pxcl`: an X profile artefact (`.pxcl` bytes), or null for the shipped X2-PROVISIONAL bound to that profile (1.0.0–1.1.0 shipped X1-PROVISIONAL: `docs/calibration/X1-PROVISIONAL.pxcl`). Artefact layout 1 (X1) or 2 (X2: two more bytes, the route derivation and the structural door). 0 when the artefact does not decode — check it |
 | `paph_xprofile_free(h)` | |
 | `paph_xprofile_bytes(h) -> block` | the X artefact's bytes (store them: the identity covers every parameter) |
 | `paph_xprofile_id(h, out_32)` | SHA-256 identity |
@@ -150,7 +150,7 @@ nothing of either moves. `paph_siabi()` returns 1.
 
 | export | does |
 |---|---|
-| `paph_siprofile(psi, n) -> h` | an SI profile artefact (`.psi`), or null for the shipped SI1-PROVISIONAL; 0 when it does not decode |
+| `paph_siprofile(psi, n) -> h` | an SI profile artefact (`.psi`), or null for the shipped SI2-PROVISIONAL, bound to X2 (1.1.0's SI1-PROVISIONAL, the same fit bound to X1: `docs/calibration/SI1-PROVISIONAL.psi`); 0 when it does not decode |
 | `paph_siprofile_free(h)`, `paph_siprofile_bytes(h) -> block` | release; the artefact bytes |
 | `paph_siprofile_id(h, out32)`, `paph_siprofile_xid(h, out32)` | its SHA-256 identity; the identity of the X profile whose route lanes it bands |
 | `paph_siprofile_info(h, out_i32x4)` | probes, default threshold, default budget, feature version |
