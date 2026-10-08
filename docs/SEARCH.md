@@ -11,6 +11,7 @@ ingest   image ─► hash() ─► wires: Tier 1 (3952 B) + Tier 2 (32 + 40·kp
                             └─► indexKeys()             ─► postings  (kind, key) → work
 
 query    image ─► hash() ─► indexKeys({ query: true })  ─► Σ 1/df per key family ─► top K each
+                                 ∪ PAPH-SI: siquery() ─► score ≥ θ, best B           (§3b)
                                  ∪ other channels you already have (pHash, embeddings)
                             └─► rank(query, candidates, { gate: true }) ─► verdicts + evidence
 ```
@@ -134,6 +135,33 @@ testing the plans: a row-value `IN` must cover the **whole** primary key
 On Elasticsearch / OpenSearch, store `codes` and `bands` as `keyword` arrays and query each with
 a `terms`-style `bool.should`: BM25's IDF on keyword fields is the 1/df weighting, for free.
 
+## 3b. Nominate with PAPH-SI beside the keys
+
+The exact keys hold a fixed-size nomination (the top K per family) that is strong on the
+transforms that keep pixels — mirrors, rotations, integer rescales, pastes, most crops — and
+slowly loses recall as the corpus grows. PAPH-SI ([SPEC-SI-paph-si.md](SPEC-SI-paph-si.md)) is
+the second nominator: six transformation-stable feature families quantised into 16 / 256 cells
+plus the XRoute MinHash lanes as band keys, ~45 postings per work, a candidate scored by the
+summed evidence of the families it agrees on. It finds most of the channel-swapped, cropped,
+re-dithered and resampled copies the keys miss, and its share of the population does not depend
+on N.
+
+```js
+import { SI_SQL, siSqlParams } from '@pixagram/paph-x/wasm';
+const sig = paph.sisig({ t1, t2 });                   // ingest, from the wires: { bytes (104), keys (≤ 54) }
+// INSERT INTO si_works (work_id, present, sig, si_profile)
+//   VALUES (id, sig.bytes[0], sig.bytes, paph.siprofile().id().slice(0, 16)); one si_postings (k, work_id) row per sig.keys
+const q = paph.siquery({ t1: qt1, t2: qt2 });         // query (an XSide from xprepare works too)
+const rows = db.prepare(SI_SQL.query).all(...siSqlParams(q.plan()));   // [{ id, score }]
+```
+
+**Union it with the keys; never put one in front of the other.** Measured on comparator-42
+copies (SPEC-SI §9): keys alone 98.1 %, SI alone 91.9 %, their union 99.8 % at 4,000 works and
+98.8 % at 104,000 (97.0 % with SI's pool cut to its default budget of 2,000); in series (SI
+first) pasted copies drop to 13 %. Store the SI profile id with
+each row and re-derive signatures from the wires when it changes. In memory, `paph.siindex()`
+answers the same query without SQL.
+
 ## 4. Verify
 
 ```js
@@ -208,6 +236,12 @@ smaller works have fewer), ~700 postings and their df rows — about 50 KB in SQ
 Per query: the nomination statement (a few ms on a local SQLite) and a comparison per screened
 candidate. One SQLite database of 10 GB (a Cloudflare Durable Object's limit) holds about
 200,000 works; past that, shard the postings by key range and merge the nominations.
+
+PAPH-SI adds 104 bytes and ≤ 54 postings per work (≈ 45 on average) and one statement per query
+reading ≈ 0.19 postings per stored work. At millions of works the cost that decides latency is
+XRank on the nominated candidates — 0.15 ms each for the median query, 0.59 ms on average for
+the negatives, because nominated candidates are the works that look most like the query; see
+SPEC-SI §9.5 for the budget arithmetic.
 
 ## 7. Operations
 

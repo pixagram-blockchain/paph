@@ -34,6 +34,7 @@ pub mod prepared;
 pub mod profile;
 pub mod rank;
 pub mod route;
+pub mod si;
 pub mod sidecar;
 pub mod structural;
 #[cfg(test)]

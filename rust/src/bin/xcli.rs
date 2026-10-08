@@ -7,6 +7,10 @@
 //!     xcli compare a.t1 a.t2 b.t1 b.t2 [flags]     the X report, JSON (flags as paph_xcompare)
 //!     xcli rank    q.t1 q.t2 c1.t1 c1.t2 ... [--flags n]   rank records, one line each
 //!     xcli sidecar a.t1 a.t2 out.pax1              write the sidecar, then report through it
+//!     xcli sisig   a.t1 a.t2                       PAPH-SI signature, hex, then its posting keys
+//!     xcli siplan  q.t1 q.t2                       the SQL plan of a PAPH-SI query, JSON
+//!     xcli sirank  q.t1 q.t2 c1.t1 c1.t2 ... [--threshold n] [--budget n]
+//!                                                  every candidate's score, then the index's answer
 //!
 //! A missing Tier 2 is spelled `-`.
 use paph::calibration::Profile;
@@ -91,6 +95,58 @@ fn main() {
             let p = Prepared::new(&t1, t2.as_deref()).unwrap();
             let t = paph::x::sidecar::decode(p, &xb, &b).ok().expect("sidecar decodes");
             println!("{} bytes, route {}, order {}", b.len(), t.route == s.route, t.order == s.order);
+        }
+        "sisig" => {
+            let sp = paph::x::si::SiProfile::si1();
+            let s = side(&xb, &a[2], &a[3]);
+            let sig = paph::x::si::SiSig::build(&s.p, &s.route, &sp);
+            let mut k = [0i32; paph::x::si::abi::MAX_KEYS];
+            let n = paph::x::si::abi::sig_keys(&sig, &mut k);
+            println!("{}", sig.to_bytes().iter().map(|b| format!("{:02x}", b)).collect::<String>());
+            println!("{}", k[..n].iter().map(|v| v.to_string()).collect::<Vec<_>>().join(","));
+        }
+        "siplan" => {
+            let sp = paph::x::si::abi::SiBound { prof: paph::x::si::SiProfile::si1(), id: paph::x::si::SiProfile::si1().id() };
+            let s = side(&xb, &a[2], &a[3]);
+            let q = paph::x::si::SiQuery::new(&s.p, &s.route, &sp.prof);
+            println!("{}", paph::x::si::abi::plan_json(&sp, &q).to_string());
+        }
+        "sirank" => {
+            let sp = paph::x::si::SiProfile::si1();
+            let (mut th, mut budget) = (sp.threshold, sp.budget as usize);
+            let mut files: Vec<&String> = Vec::new();
+            let mut i = 2;
+            while i < a.len() {
+                match a[i].as_str() {
+                    "--threshold" => {
+                        th = a[i + 1].parse().unwrap();
+                        i += 2;
+                    }
+                    "--budget" => {
+                        budget = a[i + 1].parse().unwrap();
+                        i += 2;
+                    }
+                    _ => {
+                        files.push(&a[i]);
+                        i += 1;
+                    }
+                }
+            }
+            let q = side(&xb, files[0], files[1]);
+            let qy = paph::x::si::SiQuery::new(&q.p, &q.route, &sp);
+            let mut idx = paph::x::si::SiIndex::new();
+            let mut scores = Vec::new();
+            for c in files[2..].chunks(2) {
+                let s = side(&xb, c[0], c[1]);
+                let sig = paph::x::si::SiSig::build(&s.p, &s.route, &sp);
+                scores.push(if qy.touches(&sig) { qy.score(&sig).to_string() } else { "-".into() });
+                idx.add(sig);
+            }
+            println!("{}", scores.join(","));
+            let mut out = Vec::new();
+            let st = idx.query(&qy, th, budget, &mut out);
+            println!("{}", out.iter().map(|(s, v)| format!("{s}:{v}")).collect::<Vec<_>>().join(","));
+            println!("{},{},{}", st.touched, st.admitted, st.postings);
         }
         _ => panic!("mode"),
     }

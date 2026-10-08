@@ -1,5 +1,60 @@
 # Changelog
 
+## 1.1.0 — 2026-10-08 — PAPH-SI: which stored works are worth comparing
+
+Nothing of 1.0.0 moves: the wire (3), comparator 42, CAL-004-PROPOSED, PAPH-X and profile
+X1-PROVISIONAL, ABI 3 and X ABI 1; the equivalence digest (3,160 cases) is byte-identical.
+Beside them, **PAPH-SI**, the screening index of `docs/SPEC-SI-paph-si.md` — built from a design
+note that proposed a product-quantised index over geometry, palette, structure and local
+clusters at 16 / 256 resolution, measured, and corrected where the measurements disagreed.
+
+**The index.** Six feature families read from the wire alone, each designed to survive the
+square's symmetries and, where the wire allows, the complement and the recolours that keep the
+palette or the luminance order: RUNS (run-length texture), TONE (luminance-quantile topology),
+PAL (palette population profile — no colour), SHAPE (quantile-band regions), SIL (silhouette),
+KPGEO (keypoint layout). Each is projected on four principal axes and cut at the quartiles: 256
+fine cells, whose median bits are 16 exact coarse parents. XRoute's 64 local and 32 band MinHash
+lanes are banded into 48 keys beside them. A 104-byte signature and ~45 postings per work; a
+query probes four cells per family in order of the measured transform noise, and a candidate's
+score is the summed log-likelihood evidence of the families it reaches — never a requirement
+that all of them agree. The DCT section is measured out; the colour section is excluded by rule
+(SPEC-003 §6.5).
+
+**Measured** (`rust/target/release/sibench`, `npm run bench:si`; 120 bases × 20 transforms, 8,000
+same-style distractors and 100,000 more for scaling; recall on comparator-42 Copy pairs): the
+note's `AND` of shape, palette and structure keeps 74.3 % of copies at 698× (59.6 % at 18,697×
+without probes); PAPH-SI keeps 91.9 % at 70× (the default θ = 2), 90.5 % at 98×, 87.9 % at 191×.
+In union with the exact keys of `docs/SEARCH.md` — never in series: pasted copies are found by
+the keys (100 %) and not by SI (13 %) — 99.8 % at 4,000 works, where XRank returns Copy on
+99.5 % end to end, and 98.8 % at 104,000 (97.0 % at SI's default budget of 2,000). SI's pool
+share and recall do not move with N; the index query reads ≈ 0.19 postings per stored work
+(0.54 ms at 104k, native). The runs are in `docs/calibration/SI1-PROVISIONAL.log`.
+
+**Profile SI1-PROVISIONAL** (`docs/calibration/SI1-PROVISIONAL.psi`, 5,334 bytes, SHA-256
+`ca0ff1047b03cadd…`, bound to X1): codebooks, probe count, evidence weights, default threshold
+and budget; fitted deterministically by `sibench fit` (re-running it reproduces the file byte for
+byte), on synthetic art only.
+
+**One definition, four implementations**: `scan` (the reference), `SiIndex` (in memory,
+ScanCount), SQL (`SI_SQL` and `siSqlParams` in the glue — SQLite / D1, one postings table, one
+statement), and the C ABI (SI ABI 1: `paph_siprofile*`, `paph_sisig`, `paph_sisig_wire`,
+`paph_sikeys`, `paph_siquery*`, `paph_siindex*`). The glue adds `siprofile`, `sisig`, `sikeys`,
+`siquery`, `siindex` and the `SIProfile`, `SIQuery`, `SIIndex` classes, with types. `xcli` gains
+`sisig`, `siplan`, `sirank`; `sibench` (with `rust/sibench.sh`) is the harness.
+
+**Verification.** 7 new unit tests (109 in all): the index equals the scan through adds,
+removals and compactions at five thresholds and budgets; the coarse cell is the exact parent of
+sixteen fine cells; SI1 round-trips and refuses tampering; copies clear the default threshold on
+real wires and unrelated works do not. `npm run test:si` (1,417 checks): signatures, keys,
+plans, scores and index answers identical natively and in both WebAssembly builds; the SQL
+statement on SQLite returns exactly the index's rows, through removals.
+
+**Findings about 1.0.0, not changed here** (SPEC-SI §3.3, §11): XRoute's G0 word equals its
+original's on 87 % of D4 copies of canvases whose sides are multiples of 16 and on 41 % of the
+others; the X1 route bars put 49 of 976 comparator-42 copies of this corpus in the route's
+Reject class (XRank screens them anyway); XRank's gate drops 3 of those 976 pairs — recolours
+that scramble luminance, empty anchor pools, certified by comparator 42 on structure.
+
 ## 1.0.0 — 2026-10-06 — PAPH-X: the same verdicts through a cheaper path
 
 The package is now **`@pixagram/paph-x`**, and its versions start over at 1.0.0 (it was

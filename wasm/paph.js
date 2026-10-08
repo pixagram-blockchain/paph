@@ -1,7 +1,8 @@
 /**
  * PAPH 4.2 + PAPH-X — the WebAssembly engine.
  *
- * Hand-written glue over a small C ABI (rust/src/abi.rs, rust/src/x/abi.rs),
+ * Hand-written glue over a small C ABI (rust/src/abi.rs, rust/src/x/abi.rs,
+ * rust/src/x/si/abi.rs),
  * deliberately not wasm-bindgen: what crosses the boundary is flat integers,
  * length-prefixed byte blocks and opaque handles, and the whole contract can
  * be read here.
@@ -19,6 +20,14 @@
  *     const sides = rows.map(r => paph.prepare(r.t1, r.t2, { strict: true }));
  *     const hits = paph.rank(q, sides);          // screen, then compare survivors
  *
+ * Among many stored works, find the few worth ranking — the PAPH-SI screening
+ * index (docs/SPEC-SI-paph-si.md), beside the exact keys of indexKeys():
+ *
+ *     const idx = paph.siindex();
+ *     for (const w of works) w.slot = idx.add(paph.sisig(w.side).bytes);
+ *     const q = paph.siquery(querySide);
+ *     idx.query(q).hits;                         // [{ slot, score }], best first
+ *
  * Cloudflare Workers / bundlers that import .wasm as a module:
  *
  *     import wasm from '@pixagram/paph-x/wasm/paph.wasm';
@@ -27,6 +36,11 @@
 
 const ABI = 3;
 const X_ABI = 1;
+const SI_ABI = 1;
+const SI_SIG_BYTES = 104;
+const SI_MAX_KEYS = 54;
+/* PAPH-SI family names, in signature order (cells, then the two MinHash families) */
+const SI_FAMILIES = ['runs', 'tone', 'pal', 'shape', 'sil', 'kpgeo', 'local', 'band'];
 const WIRE_VERSION = 3;
 
 /* Field order MUST match config_from in rust/src/abi.rs. */
@@ -236,6 +250,182 @@ export class XSide {
   }
 }
 
+/**
+ * A PAPH-SI profile (.psi): six codebooks of 16 / 256 cells, the evidence
+ * weights, the default threshold and budget, bound to one X profile.
+ * `engine.siprofile()` is the shipped SI1-PROVISIONAL.
+ */
+export class SIProfile {
+  constructor(engine, handle) {
+    this.engine = engine;
+    this.handle = handle;
+    const x = engine.x;
+    this._unreg = {};
+    if (registry) registry.register(this, function () { x.paph_siprofile_free(handle); }, this._unreg);
+  }
+  /** the artefact's bytes (store them: the identity covers every parameter) */
+  bytes() { return this.engine.take(this.engine.x.paph_siprofile_bytes(this.handle)); }
+  /** SHA-256 identity, hex */
+  id() { return this.engine._hex32(p => this.engine.x.paph_siprofile_id(this.handle, p)); }
+  /** identity of the X profile whose route lanes it bands, hex */
+  xid() { return this.engine._hex32(p => this.engine.x.paph_siprofile_xid(this.handle, p)); }
+  /** { probes, threshold, budget, features } */
+  info() {
+    const e = this.engine;
+    e.x.paph_siprofile_info(this.handle, e._info);
+    const d = e.dv(), v = [0, 1, 2, 3].map(i => d.getInt32(e._info + 4 * i, true));
+    return { probes: v[0], threshold: v[1], budget: v[2], features: v[3] };
+  }
+  free() {
+    if (!this.handle) return;
+    if (registry) registry.unregister(this._unreg);
+    this.engine.x.paph_siprofile_free(this.handle);
+    this.handle = 0;
+  }
+}
+
+/** One PAPH-SI query: a side's signature, probe cells and weights. */
+export class SIQuery {
+  constructor(engine, handle, profile) {
+    this.engine = engine;
+    this.handle = handle;
+    this.profile = profile;
+    const x = engine.x;
+    this._unreg = {};
+    if (registry) registry.register(this, function () { x.paph_siquery_free(handle); }, this._unreg);
+  }
+  /** the query side's own signature (104 bytes) */
+  signature() {
+    const e = this.engine, p = e.x.paph_alloc(SI_SIG_BYTES);
+    try { e.x.paph_siquery_sig(this.handle, p); return e.u8().slice(p, p + SI_SIG_BYTES); }
+    finally { e.x.paph_free(p, SI_SIG_BYTES); }
+  }
+  /** the score of a stored signature, or null when no family of it reaches the query */
+  score(sig) {
+    const e = this.engine, b = bytesOf(sig);
+    if (!b || b.length !== SI_SIG_BYTES) throw new TypeError('paph: a PAPH-SI signature is 104 bytes');
+    const p = e.put(b);
+    try {
+      const v = e.x.paph_siquery_score(this.handle, p);
+      return v === -2147483648 ? null : v;
+    } finally { e.x.paph_free(p, SI_SIG_BYTES); }
+  }
+  /**
+   * The SQL plan (SPEC-SI §7.2): { version, profile, threshold, budget,
+   * probes: [[key, family, weight]…], local: [w1, w2, w3], band: [w1, w2, w3],
+   * base: [b0…b7] } — the parameters of the one statement every query runs.
+   */
+  plan() {
+    const e = this.engine;
+    return JSON.parse(new TextDecoder().decode(e.take(e.x.paph_siquery_plan(e._siprofile(this.profile), this.handle))));
+  }
+  free() {
+    if (!this.handle) return;
+    if (registry) registry.unregister(this._unreg);
+    this.engine.x.paph_siquery_free(this.handle);
+    this.handle = 0;
+  }
+}
+
+/**
+ * An in-memory PAPH-SI index inside the module: posting lists per cell and
+ * band key, a query that scores every candidate its probes reach.  Slots are
+ * dense and never reused; keep your own slot → work map.  `generation`
+ * changes on every add or remove — put it in any cache key.
+ */
+export class SIIndex {
+  constructor(engine, handle) {
+    this.engine = engine;
+    this.handle = handle;
+    const x = engine.x;
+    this._unreg = {};
+    if (registry) registry.register(this, function () { x.paph_siindex_free(handle); }, this._unreg);
+  }
+  /** add a signature (104 bytes); returns its slot */
+  add(sig) {
+    const e = this.engine, b = bytesOf(sig);
+    if (!b || b.length !== SI_SIG_BYTES) throw new TypeError('paph: a PAPH-SI signature is 104 bytes');
+    const p = e.put(b);
+    try { return e.x.paph_siindex_add(this.handle, p); } finally { e.x.paph_free(p, SI_SIG_BYTES); }
+  }
+  remove(slot) { return this.engine.x.paph_siindex_remove(this.handle, slot >>> 0) === 1; }
+  get size() { return this.engine.x.paph_siindex_len(this.handle); }
+  get generation() { return this.engine.x.paph_siindex_generation(this.handle) >>> 0; }
+  /**
+   * The candidates of a query: `{ hits: [{ slot, score }], touched, admitted,
+   * postings }`, best first.  Options: `threshold`, `budget` (default the
+   * query profile's).
+   */
+  query(q, o) {
+    if (!(q instanceof SIQuery) || !q.handle) throw new TypeError('paph: query needs an SIQuery');
+    o = o || {};
+    const e = this.engine, info = q.profile ? q.profile.info() : e._siprofileObj().info();
+    const threshold = o.threshold === undefined ? info.threshold : o.threshold | 0;
+    const budget = o.budget === undefined ? info.budget : Math.max(0, o.budget | 0);
+    const cap = Math.min(budget, this.size);
+    const out = e.x.paph_alloc(8 * Math.max(1, cap)), st = e.x.paph_alloc(12);
+    try {
+      const n = e.x.paph_siindex_query(this.handle, q.handle, threshold, cap, out, st);
+      const d = e.dv(), hits = new Array(n);
+      for (let i = 0; i < n; i++) hits[i] = { slot: d.getInt32(out + 8 * i, true), score: d.getInt32(out + 8 * i + 4, true) };
+      return { hits, touched: d.getInt32(st, true), admitted: d.getInt32(st + 4, true), postings: d.getInt32(st + 8, true) };
+    } finally { e.x.paph_free(out, 8 * Math.max(1, cap)); e.x.paph_free(st, 12); }
+  }
+  free() {
+    if (!this.handle) return;
+    if (registry) registry.unregister(this._unreg);
+    this.engine.x.paph_siindex_free(this.handle);
+    this.handle = 0;
+  }
+}
+
+/**
+ * PAPH-SI in SQL (SQLite, Cloudflare D1; SPEC-SI §7.2).  Store each work's
+ * signature presence byte in `si_works` and one `si_postings` row per key of
+ * `engine.sisig(side).keys`; query with `SI_SQL.query` and
+ * `siSqlParams(query.plan())`.  The statement returns exactly what
+ * `SIIndex.query` returns for the same signatures (test/si-wasm.mjs runs both).
+ */
+export const SI_SQL = Object.freeze({
+  schema: `CREATE TABLE IF NOT EXISTS si_works (
+  work_id    INTEGER PRIMARY KEY,
+  present    INTEGER NOT NULL,   -- byte 0 of the signature: which families it holds
+  sig        BLOB    NOT NULL,   -- the 104-byte signature, to re-key or re-score without the wires
+  si_profile TEXT    NOT NULL    -- SIProfile.id().slice(0, 16): re-derive on change
+);
+CREATE TABLE IF NOT EXISTS si_postings (
+  k       INTEGER NOT NULL,      -- a posting key (engine.sikeys)
+  work_id INTEGER NOT NULL,
+  PRIMARY KEY (k, work_id)
+) WITHOUT ROWID;`,
+  query: `WITH probe(k, fam, w) AS (
+  SELECT value->>0, value->>1, value->>2 FROM json_each(?1)),
+hits AS (
+  SELECT p.work_id AS id, probe.fam AS fam, probe.w AS w
+  FROM probe CROSS JOIN si_postings p ON p.k = probe.k),
+agg AS (
+  SELECT id, SUM(CASE WHEN fam < 6 THEN w ELSE 0 END) AS ex, SUM(fam = 6) AS nl, SUM(fam = 7) AS nb
+  FROM hits GROUP BY id),
+scored AS (
+  SELECT agg.id AS id, ex
+    + CASE WHEN nl = 0 THEN 0 WHEN nl = 1 THEN ?2 WHEN nl <= 3 THEN ?3 ELSE ?4 END
+    + CASE WHEN nb = 0 THEN 0 WHEN nb = 1 THEN ?5 WHEN nb <= 3 THEN ?6 ELSE ?7 END
+    + (w.present & 1) * ?8 + ((w.present >> 1) & 1) * ?9 + ((w.present >> 2) & 1) * ?10
+    + ((w.present >> 3) & 1) * ?11 + ((w.present >> 4) & 1) * ?12 + ((w.present >> 5) & 1) * ?13
+    + ((w.present >> 6) & 1) * ?14 + ((w.present >> 7) & 1) * ?15 AS score
+  FROM agg CROSS JOIN si_works w ON w.work_id = agg.id)
+SELECT id, score FROM scored WHERE score >= ?16 ORDER BY score DESC, id LIMIT ?17`
+});
+
+/** The parameters of `SI_SQL.query` for a plan; `o.threshold`, `o.budget` override the profile's. */
+export function siSqlParams(plan, o) {
+  o = o || {};
+  const th = o.threshold === undefined ? plan.threshold : o.threshold | 0;
+  /* SQLite reads LIMIT −1 as "no limit"; the index reads a negative budget as none */
+  const budget = o.budget === undefined ? plan.budget : Math.max(0, o.budget | 0);
+  return [JSON.stringify(plan.probes), ...plan.local, ...plan.band, ...plan.base, th, budget];
+}
+
 const POLICIES = { fast: 1, safe: 2, exact: 3 };
 
 export class Engine {
@@ -243,6 +433,7 @@ export class Engine {
     this.x = exports;
     if (exports.paph_abi() !== ABI) throw new Error('paph: wasm ABI ' + exports.paph_abi() + ', glue expects ' + ABI);
     if (exports.paph_xabi() !== X_ABI) throw new Error('paph: wasm X ABI ' + exports.paph_xabi() + ', glue expects ' + X_ABI);
+    if (exports.paph_siabi() !== SI_ABI) throw new Error('paph: wasm SI ABI ' + exports.paph_siabi() + ', glue expects ' + SI_ABI);
     if (exports.paph_version() !== WIRE_VERSION) throw new Error('paph: wasm reports wire version ' + exports.paph_version());
     this.backend = 'wasm';
     this.simd = simdSupported();
@@ -253,6 +444,15 @@ export class Engine {
     this._info = exports.paph_alloc(16);
     this._profiles = new Map();
     this._xshipped = null;
+    this._sishipped = null;
+  }
+
+  _hex32(fill) {
+    const p = this.x.paph_alloc(32);
+    try {
+      fill(p);
+      return Array.from(this.u8().subarray(p, p + 32), b => b.toString(16).padStart(2, '0')).join('');
+    } finally { this.x.paph_free(p, 32); }
   }
 
   /* views are detached whenever memory grows, so never hold one across a call */
@@ -642,6 +842,99 @@ export class Engine {
   }
 
   /**
+   * A PAPH-SI profile from its artefact bytes, or the shipped SI1-PROVISIONAL
+   * without them.  Its `xid()` names the X profile it was fitted against:
+   * signatures and queries refuse sides prepared under any other.
+   */
+  siprofile(bytes) {
+    const b = bytesOf(bytes);
+    const p = b ? this.put(b) : 0;
+    let h;
+    try { h = this.x.paph_siprofile(p, b ? b.length : 0); } finally { if (p) this.x.paph_free(p, b.length); }
+    if (!h) throw new Error('paph: SI profile artefact does not decode');
+    return new SIProfile(this, h);
+  }
+
+  _siprofileObj(p) {
+    if (p instanceof SIProfile) {
+      if (!p.handle) throw new Error('paph: SI profile was freed');
+      return p;
+    }
+    if (!this._sishipped) this._sishipped = this.siprofile();
+    return this._sishipped;
+  }
+
+  _siprofile(p) { return this._siprofileObj(p).handle; }
+
+  /**
+   * The PAPH-SI signature of a side — what an index stores: `{ bytes (104),
+   * present: [family names], cells: { runs: 0..255, … }, keys }`, where `keys`
+   * are the integer posting keys for an SQL index (SPEC-SI §7.2).  `side`: an
+   * XSide (its route is reused) or `{ t1, t2 }` (derived from the wires alone,
+   * no bucket index — the cheap path for re-indexing stored works).  Options:
+   * `profile` (SIProfile), `xprofile` (XProfile, for wires).
+   */
+  sisig(side, o) {
+    o = o || {};
+    const sp = this._siprofile(o.profile);
+    const out = this.x.paph_alloc(SI_SIG_BYTES);
+    let bytes;
+    try {
+      let r;
+      if (side instanceof XSide) {
+        if (!side.handle) throw new Error('paph: side was freed');
+        r = this.x.paph_sisig(sp, side.handle, out);
+      } else {
+        const b1 = bytesOf(side && side.t1), b2 = bytesOf(side && side.t2);
+        if (!b1) throw new TypeError('paph: sisig needs an XSide or { t1, t2 }');
+        const p1 = this.put(b1), p2 = this.put(b2);
+        try { r = this.x.paph_sisig_wire(sp, this._xprofile(o.xprofile), p1, b1.length, p2, b2 ? b2.length : 0, out); }
+        finally { if (p1) this.x.paph_free(p1, b1.length); if (p2) this.x.paph_free(p2, b2.length); }
+      }
+      if (r === -2) throw new Error('paph: the side was prepared under another X profile than the SI profile is bound to');
+      if (r === -3) throw new Error('paph: tier 1 refused (length, version or CRC)');
+      if (r !== 0) throw new Error('paph: sisig refused');
+      bytes = this.u8().slice(out, out + SI_SIG_BYTES);
+    } finally { this.x.paph_free(out, SI_SIG_BYTES); }
+    return this._sigInfo(bytes);
+  }
+
+  _sigInfo(bytes) {
+    const present = [], cells = {};
+    for (let f = 0; f < 8; f++) if (bytes[0] >> f & 1) present.push(SI_FAMILIES[f]);
+    for (let f = 0; f < 6; f++) if (bytes[0] >> f & 1) cells[SI_FAMILIES[f]] = bytes[1 + f];
+    return { bytes, present, cells, keys: this.sikeys(bytes) };
+  }
+
+  /** the posting keys of a stored signature (integers below 2^27) */
+  sikeys(sig) {
+    const b = bytesOf(sig);
+    const p = this.put(b), out = this.x.paph_alloc(4 * SI_MAX_KEYS);
+    try {
+      const n = this.x.paph_sikeys(p, out);
+      return Array.from(new Int32Array(this.x.memory.buffer.slice(out, out + 4 * n)));
+    } finally { this.x.paph_free(p, SI_SIG_BYTES); this.x.paph_free(out, 4 * SI_MAX_KEYS); }
+  }
+
+  /**
+   * A PAPH-SI query for a side (an XSide, or `{ t1, t2 }` prepared here).
+   * Options: `profile` (SIProfile), `xprofile` (XProfile).
+   */
+  siquery(side, o) {
+    o = o || {};
+    const prof = this._siprofileObj(o.profile);
+    const temps = [];
+    let h;
+    try { h = this.x.paph_siquery(prof.handle, this._xside(side, temps, o.xprofile)); }
+    finally { for (const s of temps) s.free(); }
+    if (!h) throw new Error('paph: the side was prepared under another X profile than the SI profile is bound to');
+    return new SIQuery(this, h, prof);
+  }
+
+  /** a new, empty in-memory PAPH-SI index */
+  siindex() { return new SIIndex(this, this.x.paph_siindex_new()); }
+
+  /**
    * Keypoint descriptors of a side, eight u32 words per keypoint as stored:
    * the keypoints a comparison uses (Tier 2, or the sketch without one) in
    * wire order, or strongest first with `{ strongest: true }`, or with
@@ -737,5 +1030,5 @@ export class Engine {
   }
 }
 
-export { DEFAULTS, STATES, EXECUTIONS, RANK_FIELDS, XRANK_FIELDS, XSCREEN_FIELDS, ABI, X_ABI, WIRE_VERSION, KEYS_VERSION };
+export { DEFAULTS, STATES, EXECUTIONS, RANK_FIELDS, XRANK_FIELDS, XSCREEN_FIELDS, ABI, X_ABI, SI_ABI, SI_SIG_BYTES, SI_FAMILIES, WIRE_VERSION, KEYS_VERSION };
 export const backend = 'wasm';

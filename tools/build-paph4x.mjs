@@ -49,8 +49,13 @@ function classicGlue(esm) {
     [/^export class Profile /m, 'class Profile '],
     [/^export class XProfile /m, 'class XProfile '],
     [/^export class XSide /m, 'class XSide '],
+    [/^export class SIProfile /m, 'class SIProfile '],
+    [/^export class SIQuery /m, 'class SIQuery '],
+    [/^export class SIIndex /m, 'class SIIndex '],
+    [/^export const SI_SQL = /m, 'const SI_SQL = '],
+    [/^export function siSqlParams\(/m, 'function siSqlParams('],
     [/^export class Engine /m, 'class Engine '],
-    [/^export \{ DEFAULTS, STATES, EXECUTIONS, RANK_FIELDS, XRANK_FIELDS, XSCREEN_FIELDS, ABI, X_ABI, WIRE_VERSION, KEYS_VERSION \};\n/m, ''],
+    [/^export \{ DEFAULTS, STATES, EXECUTIONS, RANK_FIELDS, XRANK_FIELDS, XSCREEN_FIELDS, ABI, X_ABI, SI_ABI, SI_SIG_BYTES, SI_FAMILIES, WIRE_VERSION, KEYS_VERSION \};\n/m, ''],
     [/^export const backend = 'wasm';\n/m, '']
   ];
   for (const [re, to] of edits) {

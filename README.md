@@ -93,6 +93,30 @@ claimed; the gate table, the per-class numbers and the known gaps are in
 [docs/PAPH-X.md](docs/PAPH-X.md). Profile X1 is provisional: calibrated on the synthetic
 corpus, not yet on a moderation corpus.
 
+## PAPH-SI: which stored works are worth comparing
+
+PAPH-SI ([docs/SPEC-SI-paph-si.md](docs/SPEC-SI-paph-si.md)) is the screening index in front of
+XRank: six transformation-stable feature families read from the wire — stroke texture,
+luminance topology, palette population, quantile-band regions, silhouette, keypoint layout —
+each quantised into a 16-coarse / 256-fine cell hierarchy, plus XRoute's MinHash lanes banded
+into keys. A 104-byte signature and ~45 postings per work; a candidate is scored by the summed
+evidence of the families it agrees on, never required to agree on all of them.
+
+```js
+const index = paph.siindex();                 // in memory; or SQLite / D1 with SI_SQL.schema
+const sig = paph.sisig(fp);                   // ingest, from the wires { t1, t2 }: 104 bytes + posting keys
+const slot = index.add(sig.bytes);            // in SQL: one si_works row, sig.keys as si_postings rows
+const q = paph.siquery(upload);               // an XSide (xprepare) or { t1, t2 }
+index.query(q).hits;                          // [{ slot, score }], best first
+db.prepare(SI_SQL.query).all(...siSqlParams(q.plan()));   // the same answer from SQLite / D1
+```
+
+Measured on the synthetic corpus (comparator-42 copies, `npm run bench:si`): requiring shape,
+palette and structure to agree keeps 74 % of copies at 698×; PAPH-SI's score keeps 92 % at 70×
+and 90.5 % at 98×; **in union with the exact keys, 99.8 % at 4,000 works** — XRank returns Copy
+on 99.5 % of them end to end — **and 98.8 % at 104,000** (97.0 % with SI's pool cut to its
+default 2,000). SI1 is provisional: fitted on synthetic art only.
+
 ## Faster, with the same bytes
 
 | | before | after |
@@ -119,7 +143,8 @@ answer is retrieve-then-verify, with PAPH supplying both halves:
 2. **Index exact-match keys** — `indexKeys()` derives Tier-1 local codes (canonical under the
    square's symmetries and inversion) and 24-bit descriptor bands; integers in any store.
 3. **Nominate** — score works sharing keys with a query by Σ 1/df, keep the top 32 per family,
-   union with whatever else you have (pHash, embeddings).
+   union with PAPH-SI's candidates (`siquery`, SQL or in memory) and whatever else you have
+   (pHash, embeddings).
 4. **Verify** — `rank(query, candidates, { gate: true })`; the comparator decides, and its report
    is the evidence.
 
@@ -142,13 +167,14 @@ rust/                     the Rust reference (crate `paph`, no dependencies)
   src/equiv.rs            the equivalence digest      check.sh  bench.sh
   src/x/                  PAPH-X: route, bucket, anchor, matcher, geom, structural, compare, rank,
                           prepared, sidecar, profile, abi
-  src/bin/                xbench (the §33–35 harness) · xprof · xcli · prof · paphcli · paph-equiv
+  src/x/si/               PAPH-SI: features, profile, code (cells, probes, score), index, fit, abi
+  src/bin/                xbench (the §33–35 harness) · sibench (PAPH-SI) · xprof · xcli · prof · paphcli · paph-equiv
 wasm/                     paph.wasm (SIMD128), paph-baseline.wasm, paph.js (glue), paph.d.ts
 index.js · index.cjs      the package entry (JavaScript engine + wasm())
-docs/                     SPEC-003, SPEC-004, SPEC-004.1, SPEC-004.2, SPEC-X · PAPH-X · PERFORMANCE ·
-                          SEARCH · WASM-ABI · calibration/ (.pcal artefacts) · golden/ (conformance vectors)
+docs/                     SPEC-003, SPEC-004, SPEC-004.1, SPEC-004.2, SPEC-X, SPEC-SI · PAPH-X · PERFORMANCE ·
+                          SEARCH · WASM-ABI · calibration/ (.pcal, .psi artefacts) · golden/ (conformance vectors)
 integrations/             pixagram-search: the Cloudflare integration as a patch
-test/                     suites, parity, benchmarks, recall · x-wasm.mjs, x-bench.mjs (PAPH-X)
+test/                     suites, parity, benchmarks, recall · x-wasm.mjs, x-bench.mjs (PAPH-X) · si-wasm.mjs (PAPH-SI)
 tools/                    build-wasm.sh · build-paph4x.mjs · gen-corpus.mjs
 ```
 
@@ -167,6 +193,8 @@ npm run test:bench          # the bench, headless, on both engines
 npm run bench               # engine timings          npm run recall   index-key recall
 npm run test:x              # PAPH-X: native xcli vs both WebAssembly builds, symmetry, exactness, rank, sidecar
 npm run bench:x             # PAPH-X timings in WebAssembly;  rust/target/release/xbench  the native harness
+npm run test:si             # PAPH-SI: native vs both WebAssembly builds, index = definition, SQL = index
+npm run bench:si            # PAPH-SI: rust/sibench.sh — stability, recall vs reduction, funnel (--big: scaling)
 ```
 
 `test:equiv` needs the digest-exporting builds: `tools/build-wasm.sh --equiv`.
@@ -179,12 +207,14 @@ npm run bench:x             # PAPH-X timings in WebAssembly;  rust/target/releas
 | comparator | **42** (SPEC-004.2); 41 frozen beside it; PAPH-X reports as **50** with 42's vocabulary | when the evidence says the judgement should |
 | calibration | **CAL-004-PROPOSED**, identified by its SHA-256; PAPH-X profile **X1-PROVISIONAL** bound to it | whenever a corpus is re-derived |
 | index keys | **KEYS_VERSION 1** | re-derive keys from stored wires; nothing is re-hashed |
-| WebAssembly ABI | **3** (ABI 2 unchanged, plus the PAPH-X exports, X ABI 1) | |
+| screening index | **SI ABI 1**, feature derivation 1, profile **SI1-PROVISIONAL** bound to X1 | re-derive signatures from stored wires; nothing is re-hashed |
+| WebAssembly ABI | **3** (ABI 2 unchanged, plus the PAPH-X exports, X ABI 1, and the PAPH-SI exports, SI ABI 1) | |
 
 `@pixagram/paph` numbered its releases by the comparator (4.2.3: comparator 42 with engines that
 are faster and agree in four more places). `@pixagram/paph-x` starts over at **1.0.0**: that
 package, renamed, with PAPH-X beside it and nothing of 4.2.3 changed — comparator 42,
-CAL-004-PROPOSED, ABI 3 / X ABI 1, profile X1-PROVISIONAL (see [CHANGELOG.md](CHANGELOG.md)).
+CAL-004-PROPOSED, ABI 3 / X ABI 1, profile X1-PROVISIONAL; 1.1.0 adds PAPH-SI beside them (see
+[CHANGELOG.md](CHANGELOG.md)).
 
 ## License
 

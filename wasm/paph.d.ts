@@ -183,6 +183,84 @@ export declare class XSide {
 
 type XSideOrWires = XSide | Wires;
 
+/* ---- PAPH-SI (docs/SPEC-SI-paph-si.md) ---- */
+
+export type SIFamily = 'runs' | 'tone' | 'pal' | 'shape' | 'sil' | 'kpgeo' | 'local' | 'band';
+
+/** A PAPH-SI profile (.psi): six 16 / 256-cell codebooks, evidence weights, default threshold and budget. */
+export declare class SIProfile {
+  readonly handle: number;
+  /** the artefact's bytes — store them: the identity covers every parameter */
+  bytes(): Uint8Array;
+  /** SHA-256 identity, hex */
+  id(): string;
+  /** identity of the X profile whose route lanes it bands, hex */
+  xid(): string;
+  info(): { probes: number; threshold: number; budget: number; features: number };
+  free(): void;
+}
+
+/** What an index stores for one work. */
+export interface SISignature {
+  /** the 104-byte signature */
+  bytes: Uint8Array;
+  /** the families the work can be measured on */
+  present: SIFamily[];
+  /** the fine cell (0–255) of each quantised family present; its coarse cell (0–15), the median bit of each axis, is its odd bits: `(c >> 1 & 1) | (c >> 2 & 2) | (c >> 3 & 4) | (c >> 4 & 8)` */
+  cells: Partial<Record<'runs' | 'tone' | 'pal' | 'shape' | 'sil' | 'kpgeo', number>>;
+  /** the posting keys for an SQL index (integers below 2^27) */
+  keys: number[];
+}
+
+/** The parameters of `SI_SQL.query` for one query (see `siSqlParams`). */
+export interface SIPlan {
+  version: number;
+  /** SIProfile.id().slice(0, 16) — the rows must have been keyed under the same profile */
+  profile: string;
+  threshold: number;
+  budget: number;
+  /** [posting key, family (0–5 quantised, 6 local, 7 band), weight] */
+  probes: [number, number, number][];
+  /** the score a candidate gains for 1, 2–3 and ≥ 4 equal local / descriptor band keys */
+  local: [number, number, number];
+  band: [number, number, number];
+  /** per presence bit of a candidate: the none-weight it adds when the query holds that family too */
+  base: number[];
+}
+
+/** One PAPH-SI query: a side's signature, probe cells and weights. */
+export declare class SIQuery {
+  readonly handle: number;
+  signature(): Uint8Array;
+  /** the score of a stored signature, or null when none of its families reaches the query */
+  score(sig: Uint8Array): number | null;
+  plan(): SIPlan;
+  free(): void;
+}
+
+export interface SIHits {
+  /** best first: score descending, slot ascending */
+  hits: { slot: number; score: number }[];
+  /** candidates some probe or band key reached */
+  touched: number;
+  /** of those, at or above the threshold (before the budget cut) */
+  admitted: number;
+  /** posting entries read */
+  postings: number;
+}
+
+/** An in-memory PAPH-SI index inside the module.  Slots are dense and never reused. */
+export declare class SIIndex {
+  readonly handle: number;
+  add(sig: Uint8Array): number;
+  remove(slot: number): boolean;
+  readonly size: number;
+  /** changes on every add or remove: part of any cache key */
+  readonly generation: number;
+  query(q: SIQuery, o?: { threshold?: number; budget?: number }): SIHits;
+  free(): void;
+}
+
 export interface RouteReading {
   /** agreeing local MinHash lanes, 0–64 */
   local: number;
@@ -355,6 +433,17 @@ export declare class Engine {
    *  rejects; `scope` defaults to 'copy'. */
   xrank(query: XSideOrWires, candidates: XSideOrWires[],
         o?: { profile?: XProfile; opts?: Options; policy?: Policy; gate?: boolean; scope?: 'full' | 'copy'; raw?: boolean }): XRankRecord[] & { records?: Int32Array };
+
+  /* ---- PAPH-SI ---- */
+
+  /** An SI profile from its artefact, or the shipped SI1-PROVISIONAL. */
+  siprofile(bytes?: Uint8Array): SIProfile;
+  /** The signature of a side: from an XSide (route reused) or from `{ t1, t2 }` alone (no bucket index). */
+  sisig(side: XSideOrWires, o?: { profile?: SIProfile; xprofile?: XProfile }): SISignature;
+  /** the posting keys of a stored signature */
+  sikeys(sig: Uint8Array): number[];
+  siquery(side: XSideOrWires, o?: { profile?: SIProfile; xprofile?: XProfile }): SIQuery;
+  siindex(): SIIndex;
 }
 
 /** Load the module: omitted (paph.wasm / paph-baseline.wasm next to the glue), a URL or path,
@@ -371,6 +460,12 @@ export declare const XRANK_FIELDS: number;
 export declare const XSCREEN_FIELDS: number;
 export declare const ABI: number;
 export declare const X_ABI: number;
+export declare const SI_ABI: number;
+export declare const SI_SIG_BYTES: number;
+export declare const SI_FAMILIES: readonly SIFamily[];
+/** PAPH-SI in SQLite / D1: the schema and the one query statement (parameters: `siSqlParams`). */
+export declare const SI_SQL: { readonly schema: string; readonly query: string };
+export declare function siSqlParams(plan: SIPlan, o?: { threshold?: number; budget?: number }): (string | number)[];
 export declare const WIRE_VERSION: number;
 export declare const KEYS_VERSION: number;
 export declare const backend: 'wasm';

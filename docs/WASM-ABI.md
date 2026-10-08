@@ -1,4 +1,4 @@
-# The WebAssembly ABI (ABI 3)
+# The WebAssembly ABI (ABI 3, X ABI 1, SI ABI 1)
 
 `wasm/paph.wasm` exports a small C ABI — flat integers, length-prefixed byte blocks, opaque
 handles — instead of wasm-bindgen glue, so the whole contract fits on this page and any host
@@ -142,6 +142,35 @@ X rank record (`paph_xrank_fields()` = 24):
 Every record equals the fields of the pairwise copy-scope report for the same pair
 (`test/x-wasm.mjs`), and the records are byte-identical between the native engine and both
 WebAssembly builds.
+
+## PAPH-SI (SI ABI 1)
+
+The screening index of [SPEC-SI-paph-si.md](SPEC-SI-paph-si.md), added beside ABI 3 and X ABI 1 —
+nothing of either moves. `paph_siabi()` returns 1.
+
+| export | does |
+|---|---|
+| `paph_siprofile(psi, n) -> h` | an SI profile artefact (`.psi`), or null for the shipped SI1-PROVISIONAL; 0 when it does not decode |
+| `paph_siprofile_free(h)`, `paph_siprofile_bytes(h) -> block` | release; the artefact bytes |
+| `paph_siprofile_id(h, out32)`, `paph_siprofile_xid(h, out32)` | its SHA-256 identity; the identity of the X profile whose route lanes it bands |
+| `paph_siprofile_info(h, out_i32x4)` | probes, default threshold, default budget, feature version |
+| `paph_sisig(sp, xside, out104) -> 0 \| -1 \| -2` | the 104-byte signature of an X side (its route is reused); −2: the side was prepared under another X profile |
+| `paph_sisig_wire(sp, xprof, t1, t1n, t2, t2n, out104) -> 0 \| -1 \| -2 \| -3` | the signature from the wires alone — no bucket index, no anchor order; −3: Tier 1 refused |
+| `paph_sikeys(sig104, out_i32x54) -> n` | the posting keys of a signature, below 2^27: quantised family *f* in cell *c* is `f·2^24 + c`; local band *j* holding *v* is `6·2^24 + j·2^16 + v`; descriptor band, `7·2^24 + j·2^16 + v` |
+| `paph_siquery(sp, xside) -> h` | a query: the signature, the probe cells, the weights; 0 on a profile mismatch |
+| `paph_siquery_free(h)`, `paph_siquery_sig(q, out104)` | release; the query side's own signature |
+| `paph_siquery_score(q, sig104) -> i32` | THE score of a stored signature; `i32::MIN` when no family reaches it |
+| `paph_siquery_plan(sp, q) -> block` | the SQL plan, UTF-8 JSON (`probes`, `local`, `band`, `base`, `threshold`, `budget`) |
+| `paph_siindex_new() -> h`, `paph_siindex_free(h)` | an in-memory index |
+| `paph_siindex_add(h, sig104) -> slot`, `paph_siindex_remove(h, slot) -> 1 \| 0` | slots are dense and never reused |
+| `paph_siindex_len(h)`, `paph_siindex_generation(h)` | live slots; mutation count (low 32 bits — a cache key) |
+| `paph_siindex_query(h, q, threshold, budget, out_i32, stats_i32x3) -> n` | `n` pairs (slot, score), best first; stats: touched, admitted, postings read |
+
+The signature layout: byte 0 the presence bits (bit *f* for quantised family *f* — runs, tone,
+pal, shape, sil, kpgeo — bit 6 local, bit 7 band), bytes 1–6 the six fine cells, byte 7 zero,
+then 32 local band keys and 16 descriptor band keys as little-endian `u16`. Signatures, plans,
+scores and index answers are byte-identical natively and in both builds, and the SQL statement
+`SI_SQL.query` returns exactly what `paph_siindex_query` returns (`npm run test:si`).
 
 ## From another host
 

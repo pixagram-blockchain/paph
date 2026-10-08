@@ -287,6 +287,14 @@ below by the geometry it inherits, not by the retrieval it replaced.
 - **Sparse scan cost.** Bucket probes are two dependent loads and a bisection each; a lane
   kernel over a row's 48 codes would help natively (BMI2 `pext` for the projections) but has no
   SIMD128 counterpart, which is why it is not done here.
+- **The gate on recolours that scramble luminance.** On the PAPH-SI corpus (SPEC-SI §11) the
+  gate drops 3 of 976 comparator-42 Copy pairs (6 of 1,952 queries): channel swaps and a
+  palette shuffle whose anchor-tier pools are empty while comparator 42 certifies them on
+  structure alone (no inliers). Two leave at the gate's first exit (route Reject, pool ≤
+  `defer_pool_max`), one at its second (pools below `geo_min_corr` after the expansion tiers).
+  Asking the structural channels before either exit drops an empty-pool pair would close it,
+  at a cost per candidate the real corpus has to price. The X1 route bars, which put 49 of the
+  976 in the route's Reject class, want the real corpus too.
 - **`xprepare` is 0.2–1.5 ms** per side (the index and the route). The PAX1 sidecar removes it
   from the query path; an index should store it beside the wires.
 
