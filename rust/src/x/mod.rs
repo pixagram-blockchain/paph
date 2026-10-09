@@ -11,7 +11,7 @@
 //!
 //! Module map (specification sections in brackets):
 //!
-//!   profile    the X1 calibration artefact                        [§20, §43]
+//!   profile    the X1–X3 calibration artefacts                    [§20, §43]
 //!   route      XRoute: MinHash + global words, batch SIMD compare  [§6, §7]
 //!   bucket     XBucket: 24 projections, CSR buckets, mirror map    [§8.2–8.4]
 //!   anchor     the deterministic anchor order                      [§9.1]
@@ -22,7 +22,7 @@
 //!   compare    the cascade X0–X5, the lattice scheduler, reports   [§5, §12, §13, §28]
 //!   rank       XRank: route SIMD over candidates, then XMatch      [§7, §14]
 //!   sidecar    the optional PAX1 accelerator cache                 [§18]
-//!   abi        the C ABI exports (ABI 3)                            [§30]
+//!   abi        the C ABI exports (X ABI 1, beside ABI 4)            [§30]
 
 pub mod abi;
 pub mod anchor;

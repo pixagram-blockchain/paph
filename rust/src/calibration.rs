@@ -583,7 +583,8 @@ impl Profile {
         }
     }
 
-    /// SPEC-004.2 Part II — CAL-004-PROPOSED, the comparator-42 default.
+    /// SPEC-004.2 Part II — CAL-004-PROPOSED, the comparator-42 default of
+    /// 1.0–1.1 (from 1.2, CAL-007 below: this with one bar moved).
     ///
     /// Every DECISION constant is CAL-003's, unchanged.  That is the claim
     /// 4.2 is making: a larger budget changes how well the pair is measured,
@@ -656,6 +657,38 @@ impl Profile {
             lut_geo_diversity: Lut(vec![(0, 6000), (2000, 8000), (4000, 10000), (10000, 10000)]),
         }
     }
+
+    /// PAPH-X 1.2 — CAL-007-PROVISIONAL, the comparator-42 default from 1.2.
+    ///
+    /// CAL-004 with ONE bar moved: the moderate structural bar (thresholds[2],
+    /// the lattice's "partial agreement" arm for structure alone) from 2400
+    /// to 3300.  Fitted on the Pixa chain's artworks (`sibench calfit`, the
+    /// log in docs/calibration/CAL-007-PROVISIONAL.log): at 2400, 222 of the
+    /// 14,412 pairs of two authors' works read Suspected, every one of them
+    /// on structure alone with no geometric support, and the highest of them
+    /// pair unrelated pictures in one pixelated style (structural 3232).
+    /// The bar is the next multiple of 100 above the highest structural score
+    /// a certifiable pair of two authors' works reaches.
+    ///
+    /// No Copy can move: every Copy arm reads the strong and solo bars, the
+    /// geometric bars and the guards, none of which changed.  What moves is
+    /// Suspected → Related for a pair whose only evidence is structure between
+    /// 2400 and 3300 — on the chain's transformed works, 88 of 3,480, 74 of
+    /// them palette shuffles, which structure alone at that level does not tell
+    /// from two unrelated works in one style.  PROVISIONAL: 177 works, one
+    /// snapshot; a larger population will reach past 3300 and the fit says so.
+    pub fn cal007() -> Profile {
+        let mut p = Profile::cal004();
+        p.name.copy_from_slice(b"CAL-007-PROVISIO");
+        p.thresholds[2] = 3300;
+        p
+    }
+
+    /// The comparator-42 profile a caller gets by default: CAL-007-PROVISIONAL
+    /// from 1.2 (1.0–1.1: CAL-004-PROPOSED, still `cal004`).
+    pub fn shipped() -> Profile {
+        Profile::cal007()
+    }
 }
 
 #[cfg(test)]
@@ -726,6 +759,25 @@ mod tests {
         let mut p4 = Profile::cal001();
         p4.thresholds[1] += 1;
         assert_ne!(p4.id(), p.id());
+    }
+
+    /// CAL-007 is CAL-004 with the moderate structural bar alone moved, and
+    /// docs/calibration/CAL-007-PROVISIONAL.pcal is its encoding, byte for
+    /// byte (`sibench calfit` writes it).
+    #[test]
+    fn cal007_is_cal004_with_one_bar_moved() {
+        let (a, b) = (Profile::cal004(), Profile::cal007());
+        b.validate().unwrap();
+        let mut c = b.clone();
+        c.name = a.name;
+        c.thresholds[2] = a.thresholds[2];
+        assert_eq!(c, a, "only the name and thresholds[2] differ");
+        assert_eq!((a.thresholds[2], b.thresholds[2]), (2400, 3300));
+        let bytes = b.encode();
+        assert_eq!(Profile::decode(&bytes).unwrap(), b);
+        assert_eq!(&bytes[..], &include_bytes!("../../docs/calibration/CAL-007-PROVISIONAL.pcal")[..], "the committed artefact is stale");
+        assert_eq!(Profile::shipped(), b);
+        println!("CAL-007-PROVISIONAL id {} ({} bytes)", hex(&b.id()), bytes.len());
     }
 
     #[test]

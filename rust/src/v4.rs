@@ -147,6 +147,7 @@ pub fn compare_v4(
     // agree about which side is A.
     let v3 = match compare(a_t1, a_t2, b_t1, b_t2, &cfg) {
         Ok(v) => v,
+        Err(e) if e == crate::wire::E_WIRE_MISMATCH => return indeterminate(vec![crate::wire::R_WIRE_MISMATCH], profile),
         Err(_) => return indeterminate(vec![R_CORRUPT], profile),
     };
 

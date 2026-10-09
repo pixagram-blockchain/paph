@@ -11,9 +11,16 @@
 //! pastes, sixteen hash-time configurations (including the non-default window
 //! sizes that take the generic median path), every comparator, the sketch-only
 //! (Tier-1) path, corrupted wires, and compare-time configuration.
+//!
+//! `digest()` hashes wire 3 and is the 3,160-line file 1.0–1.1 recorded
+//! (test/equiv-digest.txt), byte for byte: 1.2's wire-4 sampling lives behind
+//! `Config::wire` and leaves every wire-3 output where it was.
+//! `digest_wire4()` runs the same cases on wire 4 (test/equiv-digest-4.txt),
+//! comparator 42 under the shipped CAL-007, plus the pairs of one image hashed
+//! in both formats, which every comparator must refuse.
 
 use crate::calibration::Profile;
-use crate::config::{Config, Evidence, RagEndpoint, Scoring};
+use crate::config::{Config, Evidence, RagEndpoint, Scoring, WIRE_3, WIRE_4};
 use crate::keypoints::{pattern, RotCache};
 use crate::sha256::{hex, sha256};
 use crate::wire::hash;
@@ -105,8 +112,8 @@ fn corpus() -> Vec<(String, Img)> {
     v
 }
 
-fn configs() -> Vec<(&'static str, Config)> {
-    let d = Config::default();
+fn configs(wire: u8) -> Vec<(&'static str, Config)> {
+    let d = Config { wire, ..Config::default() };
     let mut out: Vec<(&'static str, Config)> = vec![("default", d)];
     let mut c = d;
     c.kp_select = 0;
@@ -169,11 +176,40 @@ fn line(out: &mut String, id: &str, bytes: &[u8]) {
 
 /// The digest text, one line per case.  Identical on every target that
 /// runs the engine correctly — native, WebAssembly with or without SIMD.
+/// Wire 3: the 1.0–1.1 file.
 pub fn digest() -> String {
+    digest_for(WIRE_3)
+}
+
+/// The same cases on wire 4, then the format refusals.
+pub fn digest_wire4() -> String {
+    let mut out = digest_for(WIRE_4);
+    // one image hashed in both formats: every comparator refuses the pair
+    let rot = RotCache::new(&pattern());
+    let im = work(200, 150, 7, false);
+    let c3 = Config { wire: WIRE_3, ..Config::default() };
+    let c4 = Config { wire: WIRE_4, ..Config::default() };
+    let f3 = hash(&im.px, im.w, im.h, &c3, &rot);
+    let f4 = hash(&im.px, im.w, im.h, &c4, &rot);
+    let d = Config::default();
+    let r = crate::v42::compare_v42(&f3.t1, Some(&f3.t2), &f4.t1, Some(&f4.t2), &d, &Profile::cal004(), None, None);
+    line(&mut out, "mixed/v42", crate::v42::to_json_v42(&r).as_bytes());
+    let r = crate::v41::compare_v41(&f4.t1, Some(&f4.t2), &f3.t1, Some(&f3.t2), &d, &Profile::cal003(), None, None);
+    line(&mut out, "mixed/v41", crate::v41::to_json_v41(&r).as_bytes());
+    let r = crate::v4::compare_v4(&f3.t1, Some(&f3.t2), &f4.t1, Some(&f4.t2), &d, &Profile::cal001(), None, None);
+    line(&mut out, "mixed/v4", crate::v4::to_json_v4(&r).as_bytes());
+    match crate::compare::compare(&f3.t1, Some(&f3.t2), &f4.t1, Some(&f4.t2), &d) {
+        Ok(v) => line(&mut out, "mixed/v3", crate::compare::to_json(&v).as_bytes()),
+        Err(e) => line(&mut out, "mixed/v3", e.as_bytes()),
+    }
+    out
+}
+
+fn digest_for(wire: u8) -> String {
     let mut out = String::with_capacity(1 << 17);
     let rot = RotCache::new(&pattern());
     let imgs = corpus();
-    let cfgs = configs();
+    let cfgs = configs(wire);
     let mut wires: Vec<(String, Vec<u8>, Vec<u8>)> = Vec::new();
     for (name, im) in imgs.iter() {
         for (ci, (cn, c)) in cfgs.iter().enumerate() {
@@ -191,7 +227,9 @@ pub fn digest() -> String {
         }
     }
 
-    let p42 = Profile::cal004();
+    // comparator 42 under the calibration its wire format shipped with:
+    // CAL-004 for wire 3 (the 1.1 file), the shipped CAL-007 for wire 4
+    let p42 = if wire == WIRE_3 { Profile::cal004() } else { Profile::shipped() };
     let p41 = Profile::cal003();
     let p4 = Profile::cal001();
     let d = Config::default();

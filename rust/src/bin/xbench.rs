@@ -1,11 +1,13 @@
 //! The PAPH-X benchmark and acceptance harness (specification §33–§35).
 //!
 //!     xbench [--quick] [--calibrate] [--noreject] [--explain] [--table] [--dump DIR]
-//!            [--profile out.pxcl] [--xprofile in.pxcl] [--x1] [--json out.json]
+//!            [--profile out.pxcl] [--xprofile in.pxcl] [--x1 | --x2] [--json out.json]
 //!            [--dump-route out.csv]
 //!
-//! Runs under the shipped X2-PROVISIONAL, or 1.0.0's X1-PROVISIONAL with
-//! `--x1`; `--dump-route` writes every pair's route reading and anchor pool.
+//! Runs under the shipped X3-PROVISIONAL (bound to CAL-007-PROVISIONAL), or
+//! 1.1's X2-PROVISIONAL with `--x2`, or 1.0.0's X1-PROVISIONAL with `--x1`
+//! (both bound to CAL-004-PROPOSED); `--dump-route` writes every pair's route
+//! reading and anchor pool.
 //!
 //! Builds the synthetic corpus of §33.1 from the engine's own generators
 //! (`synth.rs` — the same pictures the equivalence digest hashes), runs
@@ -292,8 +294,10 @@ fn main() {
         None => {
             if args.iter().any(|a| a == "--x1") {
                 XProfile::x1()
-            } else {
+            } else if args.iter().any(|a| a == "--x2") {
                 XProfile::x2()
+            } else {
+                XProfile::x3()
             }
         }
     };
@@ -325,7 +329,9 @@ fn main() {
         xp.t_band_low = v[1];
         xp.t_global_low = v[2];
     }
-    let xb_ = XBound::new(Profile::cal004(), xp);
+    // the base the X profile is bound to: CAL-007 for X3, CAL-004 for X1 and X2
+    let base = if xp.base_id == Profile::cal007().id() { Profile::cal007() } else { Profile::cal004() };
+    let xb_ = XBound::new(base, xp);
     let (base, xp) = (xb_.base.clone(), xb_.xp.clone());
     println!("PAPH-X benchmark — base {} ({}), X {} ({}){}", base.name_str(), base.id_hex16(), xp.name_str(), xp.id_hex16(), if quick { " [quick]" } else { "" });
     let rot = RotCache::new(&pattern());

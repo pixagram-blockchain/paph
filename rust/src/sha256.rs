@@ -71,10 +71,12 @@ pub fn hex(d: &[u8]) -> String {
 }
 
 /// SPEC-004 §7 — the hash-profile identity over the ten hash-time fields.
+/// The byte after the tag is the wire format (3 or 4), so every wire-3
+/// identity is the one 1.0–1.1 published and no wire-4 identity equals one.
 pub fn hash_profile_id(c: &crate::config::Config) -> [u8; 32] {
     let mut m = Vec::with_capacity(48);
     m.extend_from_slice(b"PAPH-HP");
-    m.push(0x03);
+    m.push(if c.wire == crate::config::WIRE_3 { 0x03 } else { 0x04 });
     let f: [i32; 10] = [
         c.fold_matte as i32, c.divide_upscale as i32, c.matte_tol, c.peak_radius,
         c.fold_invert as i32, c.local_windows[0], c.local_windows[1],
@@ -118,5 +120,9 @@ mod tests {
         c.hamming_t = 12;
         c.geo_eps = 99;
         assert_eq!(hash_profile_id(&a), hash_profile_id(&c));
+        // the wire format does
+        let mut d = crate::config::Config::default();
+        d.wire = crate::config::WIRE_3;
+        assert_ne!(hash_profile_id(&a), hash_profile_id(&d));
     }
 }

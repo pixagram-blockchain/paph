@@ -18,8 +18,10 @@
 //!                                                  structure alone, anchor pools empty)
 //!
 //! A missing Tier 2 is spelled `-`.  Everything runs under the shipped
-//! X2-PROVISIONAL (and SI3-PROVISIONAL), or under X1-PROVISIONAL (and
-//! SI1-PROVISIONAL) with `--x1` anywhere on the line.
+//! X3-PROVISIONAL (and SI4-PROVISIONAL), bound to CAL-007-PROVISIONAL; or,
+//! with `--x2` anywhere on the line, under 1.1's X2-PROVISIONAL (and
+//! SI3-PROVISIONAL), or with `--x1` under 1.0's X1-PROVISIONAL (and
+//! SI1-PROVISIONAL), both bound to CAL-004-PROPOSED.
 use paph::calibration::Profile;
 use paph::config::Config;
 use paph::prepared::Prepared;
@@ -48,10 +50,13 @@ fn policy_of(flags: u32) -> Option<u8> {
     }
 }
 
-/// The SI profile bound to the X profile in use.
+/// The SI profile bound to the X profile in use: SI4 (shipped) to X3, 1.1.2's
+/// SI3 to X2, 1.1.0's SI1 to X1.
 fn si_for(xb: &XBound) -> paph::x::si::SiProfile {
     if xb.xid == paph::x::XProfile::x1().id() {
         paph::x::si::SiProfile::si1()
+    } else if xb.xid == paph::x::XProfile::x2().id() {
+        paph::x::si::SiProfile::si3()
     } else {
         paph::x::si::SiProfile::shipped()
     }
@@ -59,16 +64,18 @@ fn si_for(xb: &XBound) -> paph::x::si::SiProfile {
 
 fn main() {
     let a: Vec<String> = std::env::args().collect();
-    // `--x1` anywhere: run under X1-PROVISIONAL (1.1.0's profile) instead of
-    // the shipped X2; it is not a positional argument
+    // `--x1` / `--x2` anywhere: run under X1-PROVISIONAL (1.1.0's profile) or
+    // X2-PROVISIONAL (1.1.1–1.1.2's), both bound to CAL-004, instead of the
+    // shipped X3 bound to CAL-007; they are not positional arguments
     let x1 = a.iter().any(|x| x == "--x1");
-    let a: Vec<String> = a.into_iter().filter(|x| x != "--x1").collect();
-    let xb = if x1 { XBound::new(Profile::cal004(), paph::x::XProfile::x1()) } else { XBound::new(Profile::cal004(), paph::x::XProfile::x2()) };
+    let x2 = a.iter().any(|x| x == "--x2");
+    let a: Vec<String> = a.into_iter().filter(|x| x != "--x1" && x != "--x2").collect();
+    let xb = if x1 { XBound::new(Profile::cal004(), paph::x::XProfile::x1()) } else if x2 { XBound::x2() } else { XBound::shipped() };
     let cfg = Config::default();
     let mut ctx = XCtx::new();
     match a[1].as_str() {
         "xprofile" => {
-            // the X profile artefact in use (X2, or X1 with --x1)
+            // the X profile artefact in use (X3; X2 with --x2, X1 with --x1)
             std::fs::write(&a[2], xb.xp.encode()).expect("write profile");
             println!("{} {} ({} bytes)", xb.xp.name_str(), paph::sha256::hex(&xb.xid), xb.xp.encode().len());
         }

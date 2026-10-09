@@ -4,9 +4,12 @@
  * markdown tables.  Nothing printed here is a claim until it is printed
  * here (specification §41.7).
  *
- *     node test/x-bench.mjs [--reps 5] [--x1]
+ *     node test/x-bench.mjs [--reps 5] [--x1 | --x2]
  *
- * Under the shipped X2-PROVISIONAL, or 1.0.0's X1-PROVISIONAL with --x1.
+ * Under the shipped X3-PROVISIONAL (bound to CAL-007-PROVISIONAL), or 1.1's
+ * X2-PROVISIONAL with --x2, or 1.0.0's X1-PROVISIONAL with --x1 (both bound
+ * to CAL-004-PROPOSED, and loaded with it; comparator 42's own timings stay
+ * the shipped calibration's, whose measurement is CAL-004's).
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -20,12 +23,15 @@ const REPS = +arg('--reps', 5);
 
 const simd = await init(join(here, '..', 'wasm', 'paph.wasm'));
 const base = await init(join(here, '..', 'wasm', 'paph-baseline.wasm'));
-const X1 = process.argv.includes('--x1');
-if (X1) {
-  // every PAPH-X call under X1: the sides and the calls carry the profile
-  const bytes = readFileSync(join(here, '..', 'docs', 'calibration', 'X1-PROVISIONAL.pxcl'));
+const OLD = process.argv.includes('--x1') ? 'X1' : process.argv.includes('--x2') ? 'X2' : null;
+if (OLD) {
+  // every PAPH-X call under X1 or X2: the sides and the calls carry the profile
+  const calib = join(here, '..', 'docs', 'calibration');
+  const bytes = readFileSync(join(calib, OLD + '-PROVISIONAL.pxcl'));
+  const cal004 = readFileSync(join(calib, 'CAL-004-PROPOSED.pcal'));
   for (const e of [simd, base]) {
-    const prof = e.xprofile({ x: bytes });
+    const prof = e.xprofile({ base: cal004, x: bytes });
+    if (prof.status() !== 'ok') throw new Error(OLD + '-PROVISIONAL did not bind to CAL-004-PROPOSED: ' + prof.status());
     const [xp, xs, xc, xr] = [e.xprepare.bind(e), e.xscreen.bind(e), e.xcompare.bind(e), e.xrank.bind(e)];
     e.xprepare = (a, b, o) => (a && a.t1 && !(a instanceof Uint8Array)) ? xp(a, { ...(b || {}), profile: prof }) : xp(a, b, { ...(o || {}), profile: prof });
     e.xscreen = (a, b, o) => xs(a, b, { ...(o || {}), profile: prof });
@@ -60,7 +66,7 @@ const pairs = [
   ['work × unrelated work', fp(W), fp(work(512, 384, 8))]
 ];
 
-console.log(`\nPAPH-X in WebAssembly (${simd.simd ? 'SIMD128' : 'baseline'} build) — X ABI ${simd.x.paph_xabi()}, ${X1 ? 'X1' : 'X2'}-PROVISIONAL, best of ${REPS}\n`);
+console.log(`\nPAPH-X in WebAssembly (${simd.simd ? 'SIMD128' : 'baseline'} build) — X ABI ${simd.x.paph_xabi()}, ${OLD || 'X3'}-PROVISIONAL, best of ${REPS}\n`);
 console.log('### Pair screen (ms per pair)\n');
 console.log('| pair | screen 42 | xscreen | xscreen, baseline build | xscreen state |');
 console.log('|---|---:|---:|---:|---|');

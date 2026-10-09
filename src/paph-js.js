@@ -16,6 +16,9 @@ export const hash = m.hash;
 export const compare = m.compare;
 export const screen = m.screen;
 export const cal = m.cal;
+export const cal007 = m.cal007;
+export const cal004 = m.cal004;
+export const R_WIRE_MISMATCH = m.R_WIRE_MISMATCH;
 export const calibration = m.calibration;
 
 export const profileEncode = m.profileEncode;

@@ -34,6 +34,9 @@ export interface Options {
   kpCount?: number;
   kpSelect?: 0 | 1;
   sketchCount?: number;
+  /** the wire format hash() writes: 4 (the default from 1.2) or 3 (1.0–1.1's bytes).  A comparison
+   *  of a wire-3 side with a wire-4 side is refused (Indeterminate, reason WIRE_MISMATCH). */
+  wire?: 3 | 4;
   hammingT?: number;
   evidence?: 'lift' | 'proportion';
   confidenceAt?: number;
@@ -176,7 +179,8 @@ export declare class XSide {
   readonly height: number;
   /** the 136-byte route record (128 route bytes + metadata) */
   route(): Uint8Array;
-  /** the PAX1 sidecar: cache it beside the wires and hand it to `xprepare` to skip the derivation */
+  /** the PAX1 sidecar (version 2: bound to this side's Tier 1 and to the X profile): cache it beside
+   *  the wires and hand it to `xprepare` to skip the derivation */
   sidecar(): Uint8Array;
   free(): void;
 }
@@ -409,7 +413,7 @@ export declare class Engine {
   /** Screen, then compare the survivors.  `gate` (default true) passes a pair only on
    *  `geo_min_corr` (8) keypoint correspondences or more, so it drops every copy of a work with
    *  fewer keypoints, and some others, that comparator 42 would certify: `gate: false`, or
-   *  `xrank` under X2, keeps those (docs/SEARCH.md §4). */
+   *  `xrank` (X2 onwards), keeps those (docs/SEARCH.md §4). */
   rank(query: SideOrWires, candidates: SideOrWires[],
        o?: { gate?: boolean; profile?: Profile | Uint8Array; opts?: Options; raw?: boolean }): RankRecord[] & { records?: Int32Array };
   descriptors(side: SideOrWires, o?: { sketch?: boolean; strongest?: boolean }): Uint32Array;
@@ -420,9 +424,10 @@ export declare class Engine {
 
   /* ---- PAPH-X ---- */
 
-  /** An X profile: `base` a Profile or .pcal bytes (default the shipped CAL-004-PROPOSED), `x` the X
-   *  artefact bytes (default the shipped X2-PROVISIONAL bound to that base; 1.0.0's X1-PROVISIONAL
-   *  is docs/calibration/X1-PROVISIONAL.pxcl).  Check `status()`. */
+  /** An X profile: `base` a Profile or .pcal bytes (default the shipped CAL-007-PROVISIONAL), `x` the X
+   *  artefact bytes (default the shipped X3-PROVISIONAL's schedule bound to that base; 1.1's
+   *  X2-PROVISIONAL and 1.0.0's X1-PROVISIONAL, both bound to CAL-004-PROPOSED, are
+   *  docs/calibration/X2-PROVISIONAL.pxcl and X1-PROVISIONAL.pxcl).  Check `status()`. */
   xprofile(o?: { base?: Profile | Uint8Array; x?: Uint8Array }): XProfile;
   /** Parse and derive a side once: route, bucket index, anchor order.  `sidecar`: PAX1 bytes a
    *  previous `XSide.sidecar()` returned, used when they match the wires and the profile. */
@@ -441,9 +446,9 @@ export declare class Engine {
 
   /* ---- PAPH-SI ---- */
 
-  /** An SI profile from its artefact, or the shipped SI3-PROVISIONAL (bound to X2, fitted on the Pixa
-   *  chain's artworks; SI2, the synthetic fit bound to X2, and SI1, bound to X1, are
-   *  docs/calibration/SI2-PROVISIONAL.psi and SI1-PROVISIONAL.psi). */
+  /** An SI profile from its artefact, or the shipped SI4-PROVISIONAL (bound to X3, fitted on the Pixa
+   *  chain's artworks hashed in wire 4; 1.1.2's SI3 and SI2, bound to X2, and SI1, bound to X1, are
+   *  docs/calibration/SI3-PROVISIONAL.psi, SI2-PROVISIONAL.psi and SI1-PROVISIONAL.psi). */
   siprofile(bytes?: Uint8Array): SIProfile;
   /** The signature of a side: from an XSide (route reused) or from `{ t1, t2 }` alone (no bucket index). */
   sisig(side: XSideOrWires, o?: { profile?: SIProfile; xprofile?: XProfile }): SISignature;
@@ -473,6 +478,7 @@ export declare const SI_FAMILIES: readonly SIFamily[];
 /** PAPH-SI in SQLite / D1: the schema and the one query statement (parameters: `siSqlParams`). */
 export declare const SI_SQL: { readonly schema: string; readonly query: string };
 export declare function siSqlParams(plan: SIPlan, o?: { threshold?: number; budget?: number }): (string | number)[];
+/** the wire format hash() writes by default: 4 */
 export declare const WIRE_VERSION: number;
 export declare const KEYS_VERSION: number;
 export declare const backend: 'wasm';

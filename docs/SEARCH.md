@@ -45,8 +45,9 @@ const fp = paph.hash({ data: rgba, width, height });   // { t1, t2, width, heigh
 Store **both tiers**. Tier 1 alone (the 32-keypoint sketch) can be compared, but Tier 2's up to
 512 keypoints are what the geometric evidence — crops, pastes, mirrors — is measured on.
 
-The wire format is versioned (`WIRE_VERSION` 3) and deliberately stable: a comparator change
-does not invalidate stored fingerprints. And it is deterministic — the same pixels give the same
+The wire format is versioned (`WIRE_VERSION` 4 from 1.2; 3 before, and still written with
+`{ wire: 3 }`) and deliberately stable: a comparator change does not invalidate stored
+fingerprints. And it is deterministic — the same pixels give the same
 bytes in the JavaScript engine, the native build and both WebAssembly builds — so wires can be
 published and anyone can recompute a verdict from them.
 
@@ -159,15 +160,17 @@ const rows = db.prepare(SI_SQL.query).all(...siSqlParams(q.plan()));   // [{ id,
 copies of the synthetic corpus (SPEC-SI §9, profile SI2): keys alone 98.1 %, SI alone 91.9 %,
 their union 99.8 % at 4,000 works and 98.8 % at 104,000 (97.0 % with SI's pool cut to its
 default budget of 2,000); in series (SI first) pasted copies drop to 13 %. On copies of the Pixa
-chain's own works (SPEC-SI §9.7), under the shipped profile SI3: keys alone 98.8 %, SI3 alone
-85.5 %, their union 99.6 % — in-sample for SI3, which was fitted on those works. SI2, fitted on
+chain's own works (SPEC-SI §9.7–§9.8), under the shipped profile SI4: keys alone 98.8 %, SI4 alone
+85.2 %, their union 99.6 % — in-sample for SI4, which was fitted on those works. SI2, fitted on
 synthetic art, admitted half of all pairs of real works there; the chain's fit, measured on
 works it was not fitted on, admits under 1 % of them.
 
 Store the SI profile id with each row and re-derive signatures from the wires when it changes —
-1.1.2 changes the shipped profile from SI2 to SI3, so an index built under 1.1.1 is re-derived
-(or keeps SI2 by loading `docs/calibration/SI2-PROVISIONAL.psi`). In memory, `paph.siindex()`
-answers the same query without SQL.
+1.1.2 changed the shipped profile from SI2 to SI3, and 1.2 to SI4, fitted on wire-4 hashes. A
+signature does not record the wire format it came from, so an index holds one format's: after
+re-hashing (§7), re-derive every signature under SI4 and swap the postings, keyed by the profile id
+of each row; a store that stays on wire 3 keeps SI3 (`docs/calibration/SI3-PROVISIONAL.psi`, bound
+to X2). In memory, `paph.siindex()` answers the same query without SQL.
 
 ## 4. Verify
 
@@ -189,9 +192,11 @@ screens out 178 of the 976 pairs comparator 42 calls Copy: 164 because one side 
 keypoints, the rest because too few of their correspondences survive (`sibench lost`;
 [PAPH-X.md](PAPH-X.md) §6). Pixagram's works rarely have so few keypoints — one artwork of 177 on
 the chain — and on copies of the chain's works the gate screens out 8 of 3,095, 4 of them for
-keypoints: rare there, not zero. Rank with `gate: false` (every nominated candidate is compared),
-or verify with XRank: it does not gate a candidate its route signature puts in the Fast class (172
-of those 178), and under its shipped profile X2 it asks the structural channels before dropping any
+keypoints: rare there, not zero. On wire 4 the counts are 194 of the synthetic corpus's 995 copies
+(177 for keypoints) and 9 of the chain's 3,095 (5). Rank with `gate: false` (every nominated
+candidate is compared), or verify with XRank: it does not gate a candidate its route signature
+puts in the Fast class (172 of those 178; on wire 4, 188 of the 194 and all 9 real ones), and
+under its shipped profile (X3; X2 from 1.1.1) it asks the structural channels before dropping any
 other:
 
 ```js
@@ -201,9 +206,9 @@ const xhits = paph.xrank(xq, rows.map(r => paph.xprepare(r.t1, r.t2)));   // cop
 ```
 
 XRank reads Copy on all 976 of those copies and on all 3,095 of the chain's, in both arrival
-orders, at 0.2–0.6 ms a nominated candidate natively on the synthetic corpus (SPEC-SI §9.3) and
-0.79 ms a candidate over the chain's pairs, where this gated `rank` costs 1.22 ms
-([PAPH-X.md](PAPH-X.md) §4); under copy scope a pair the lattice cannot lift above `Related` reads
+orders (on wire 4: all 995 synthetic and 3,095 real), at 0.2–0.6 ms a nominated candidate natively
+on the synthetic corpus (SPEC-SI §9.3) and 0.65 ms a candidate over the chain's pairs, where this
+gated `rank` costs 1.10 ms ([PAPH-X.md](PAPH-X.md) §4); under copy scope a pair the lattice cannot lift above `Related` reads
 `NotCopy` (state 6) instead of a full state, and `state: -1` is a candidate the screen rejected.
 Store each side's `sidecar()` beside its wires and pass it back
 (`xprepare(t1, t2, { sidecar })`) to skip the derivation at query time.
@@ -218,10 +223,12 @@ What to keep:
 | `Related` | shares style or assets | usually drop |
 | `Unrelated` / `Indeterminate` | — / the comparator abstains | drop |
 
-On the chain's works comparator 42 reads `Suspected` ("partial agreement") on 1.3 % of the pairs
-of two authors' works and `Copy` on none of them (SPEC-SI §11): a review queue fed with
-`Suspected` grows with the number of pairs, so alert on `Copy`, and treat `Suspected` as a
-reviewer's lead.
+Under CAL-004 (1.0–1.1) comparator 42 read `Suspected` ("partial agreement") on 1.3 % of the
+chain's pairs of two authors' works and `Copy` on none of them: a review queue fed with
+`Suspected` grew with the number of pairs. CAL-007 (1.2, SPEC-004.2 §19) moves the bar of that arm
+above the highest structure two authors' works share on the chain, and reads `Suspected` on none
+of them; no `Copy` moves. One snapshot fitted it, so still alert on `Copy`, and treat `Suspected`
+as a reviewer's lead.
 
 `certifiable` says the comparator stands behind its verdict (enough evidence either way).
 When someone needs the why, `paph.compare(a, b, { json: true })` returns the full report —
@@ -276,11 +283,13 @@ candidate. One SQLite database of 10 GB (a Cloudflare Durable Object's limit) ho
 200,000 works; past that, shard the postings by key range and merge the nominations.
 
 PAPH-SI adds 104 bytes and ≤ 54 postings per work (≈ 45 on average) and one statement per query
-reading ≈ 0.19 postings per stored work. At millions of works the cost that decides latency is
+reading about 0.13 postings per stored work for queries of the chain's works under SI4 (SPEC-SI
+§9.8; SI2 on synthetic art reads 0.19, and SI4 there, outside the art it was fitted on, 1.0). At millions of works the cost that decides latency is
 XRank on the nominated candidates — 0.20 ms each for the median query, 0.62 ms on average for
 the negatives (native, X2, synthetic corpus), because nominated candidates are the works that
-look most like the query; 0.79 ms a candidate over the chain's real pairs, where the chain's SI
-fit nominates under 1 % of the population. See SPEC-SI §9.5 for the budget arithmetic.
+look most like the query; 0.65 ms a candidate over the chain's real pairs under X3 (1.1.2, X2:
+0.79 ms), where the chain's SI fit nominates under 1 % of the population. See SPEC-SI §9.5 for the
+budget arithmetic.
 
 ## 7. Operations
 
@@ -291,7 +300,17 @@ fit nominates under 1 % of the population. See SPEC-SI §9.5 for the budget arit
 * **Comparator changes**: store the comparator (42) and the calibration identity
   (`calibrationId`, from any report) beside each verdict — the Cloudflare integration does — and
   re-verify stored pairs when you adopt a new one. The wires stay.
-* **Wire changes** (`WIRE_VERSION`): rare by design; re-hash.
+* **Wire changes** (`WIRE_VERSION`): rare by design; re-hash. 1.2 is one: wire 4
+  ([SPEC-W4](SPEC-W4-paph-wire4.md)) samples the DCT, the shapes and the silhouette so a mirror or
+  a quarter turn moves them exactly, and a wire-3 side is never compared with a wire-4 side
+  (`WIRE_MISMATCH`). Re-hash
+  every work from its image and store the new wires; the index keys need nothing — they come from
+  the local codes and the keypoints, which wire 4 does not touch, and are the same integers in
+  both formats — but PAX1 sidecars and SI signatures are re-derived, and stored pairs re-verified
+  under the new calibration (CAL-007). While the store is mixed, the keys nominate across it as
+  before; hash the query in both formats (`hash(img, { wire: 3 })` beside the default) and verify
+  each candidate against the query of its own format — Tier 1 byte 4 says which. A store that
+  cannot re-hash stays on wire 3 with `{ wire: 3 }`.
 * **Deletion**: remove the work's postings using its stored key set (decrementing df), then the
   work.
 * **Concurrency**: when two works are indexed at the same moment, each check sees what was

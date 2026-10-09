@@ -84,10 +84,11 @@ in `@pixagram/paph-x` 1.1.1). On Pixagram's own works it is rare: of the 177 art
 chain at 1.1.2's snapshot one has fewer than 8 keypoints, and on copies made from them the gate
 screens out 8 of 3,095, 4 for keypoints ([SPEC-SI](../../docs/SPEC-SI-paph-si.md) §11). The
 patch is unchanged. Passing `gate: false` compares every nominated candidate. Verifying with
-XRank under the X2 profile keeps those copies without comparing every candidate
-([SEARCH.md](../../docs/SEARCH.md) §4), and costs 0.79 ms a candidate natively over the chain's
-pairs against 1.22 ms for the gated rank, but the vendored module is 4.2.3's and has no XRank:
-it needs `@pixagram/paph-x` 1.1.1 or later in `vendor/paph/`.
+XRank (profile X2 onwards) keeps those copies without comparing every candidate
+([SEARCH.md](../../docs/SEARCH.md) §4), and under 1.2's X3 costs 0.65 ms a candidate natively over
+the chain's pairs against 1.10 ms for the gated rank, but the vendored module is 4.2.3's and has no
+XRank: it needs `@pixagram/paph-x` 1.1.1 or later in `vendor/paph/` (and 1.2 brings wire 4 with it:
+below).
 
 ## Known gap: `Suspected` on real works
 
@@ -98,8 +99,34 @@ The stage stores verdicts from `Suspected` up (`PAPH_MIN_VERDICT`). Between the 
 out 30 of the 225. How many of the rest the stage stores depends on how many its keys nominate,
 which is not measured here; if they are nominated, the stored verdicts grow with the number of
 pairs — up to 197 of these 15,576 with the two Copy pairs, 1.3 % — and a review queue fed with
-`Suspected` grows with them. `PAPH_MIN_VERDICT` set to `Copy` stores `Copy` and `Identical` only;
-the threshold itself is CAL-004's, which no 1.1.x release moves.
+`Suspected` grows with them. `PAPH_MIN_VERDICT` set to `Copy` stores `Copy` and `Identical` only.
+The threshold is CAL-004's, the vendored module's; `@pixagram/paph-x` 1.2 ships CAL-007, which
+moves the bar of that arm above the highest certifiable structure two authors' works share on the
+chain and reads `Suspected` on none of these pairs, moving no `Copy` (SPEC-004.2 §19).
+
+## Moving to `@pixagram/paph-x` 1.2
+
+The vendored module hashes and compares wire 3, under CAL-004. `@pixagram/paph-x` 1.2 hashes wire
+4 by default ([SPEC-W4](../../docs/SPEC-W4-paph-wire4.md): the same sections, the DCT, the shapes
+and the silhouette sampled so that a mirror or a quarter turn moves them exactly), under CAL-007,
+and refuses to compare a wire-3 side with a wire-4 side (`Indeterminate`, reason `WIRE_MISMATCH`). Upgrading `vendor/paph/` is
+therefore a re-hash, which the patch already knows how to run:
+
+1. Copy `wasm/paph.wasm`, `paph.js` and `paph.d.ts` of 1.2 into `vendor/paph/` and record their
+   hashes, as the patch does for 4.2.3's.
+2. `scripts/admin.sh reindex-all '"paph"'` re-runs the stage on every artwork: each is
+   re-fingerprinted, its wires and keys replaced in `paph_works` (the keys come out the same:
+   wire 4 does not touch the local codes or the keypoints they are made of), and checked again,
+   which replaces its verdicts — now issued under CAL-007, which every row names.
+3. Until the re-index finishes the index holds both formats. The stored keys nominate across them
+   as before, but comparator 42 refuses a mixed pair (`Indeterminate`, which the stage never
+   stores), and a check replaces the verdicts of every pair it examined: a pair's verdict is
+   withdrawn when the first of its two works is re-hashed and comes back when the second is,
+   whose check compares them in one format. One `reindex-all` pass closes the gap; a store that
+   must keep every verdict meanwhile hashes with `{ wire: 3 }` until it can re-index.
+
+`PaphIndex` names its comparator and calibration (`/admin/paph`); after the upgrade it reads
+`CAL-007-PROVISIO`, the 16-byte name field of CAL-007-PROVISIONAL.
 
 ## Deploy
 

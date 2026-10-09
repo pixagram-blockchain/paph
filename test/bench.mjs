@@ -58,7 +58,8 @@ ok('the bench boots with both slots filled', !!API && !!API.slots().A && !!API.s
    API && API.slots().A ? API.slots().A.name + ' × ' + API.slots().B.name : '');
 const r0 = API.report();
 ok('it reaches a comparator-42 verdict', r0 && r0.comparator === 42, r0 ? r0.verdict + ' [' + r0.basis.join('+') + ']' : '');
-ok('the profile is CAL-004-PROPOSED, container 3', API.profile().container === 3 && API.profile().comparator === 42,
+ok('the profile is the shipped CAL-007-PROVISIONAL, container 3',
+   API.profile().container === 3 && API.profile().comparator === 42 && $('profileChip').textContent === 'CAL-007-PROVISIO',
    $('profileChip').textContent);
 
 console.log('\nthe bench on its WebAssembly engine');

@@ -102,8 +102,9 @@ pub fn compare_v41(
     let cfg = bind(cfg, profile);
     let v3 = match compare(a_t1, a_t2, b_t1, b_t2, &cfg) {
         Ok(v) => v,
-        Err(_) => {
-            let mut r = indeterminate(vec![R_CORRUPT], profile);
+        Err(e) => {
+            let why = if e == crate::wire::E_WIRE_MISMATCH { crate::wire::R_WIRE_MISMATCH } else { R_CORRUPT };
+            let mut r = indeterminate(vec![why], profile);
             r.comparator = COMPARATOR_V41;
             return r;
         }

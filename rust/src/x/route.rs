@@ -16,19 +16,24 @@
 //!            under D4 and inversion: DCT energy layout, run-length classes,
 //!            luminance-adjacency topology, region shape classes.  They are
 //!            invariant only as far as the Tier-1 sections they read are
-//!            equivariant: the DCT section is not, on canvases whose sides
-//!            are not multiples of 16 (the 16 x 16 thumbnail's cells do not
-//!            commute with a flip) and under quarter turns (integer DCT
-//!            rounding), so G0 can differ on a mirrored or rotated copy.
-//!            Route derivation 2 (profile X2) removes the two defects that
-//!            were the route's own: G1's diagonal run histogram (a mirror
-//!            sends the main diagonal to the anti-diagonal, which the wire
-//!            does not hold) and G3's region order (area ties broken by
-//!            position).  G3 still moves where the shapes section's own
-//!            grid (about ceil(long side / 128) px a cell, edges rounded
-//!            down from the top-left corner) does not commute with the
-//!            symmetry, on canvases longer than 128 px, and where a tie in
-//!            area decides which region is kept eighth.
+//!            equivariant.  Route derivation 2 (profile X2 on) removed the
+//!            two defects that were the route's own: G1's diagonal run
+//!            histogram (a mirror sends the main diagonal to the
+//!            anti-diagonal, which the wire does not hold) and G3's region
+//!            order (area ties broken by position).  The rest was the
+//!            hasher's.  On wire 3 the DCT section is not equivariant on
+//!            canvases whose sides are not multiples of 16 (the 16 x 16
+//!            thumbnail's cells do not commute with a flip) or under quarter
+//!            turns (integer DCT rounding), so G0 can differ on a mirrored or
+//!            rotated copy; and G3 moves where the shapes section's grid
+//!            (about ceil(long side / 128) px a cell, edges rounded down from
+//!            the top-left corner) does not commute with the symmetry, and
+//!            where a tie in area decides which region is kept eighth.  Wire
+//!            4 (docs/SPEC-W4-paph-wire4.md) samples every section
+//!            symmetrically, on canvases of any size: under derivation 2 the
+//!            four words of a wire-4 side are the same for a work and each of
+//!            its mirror images and quarter turns (`sibench route` measures
+//!            it; `wire4` tests the sections).
 //!
 //! The readings are never collapsed into one number (§6.5): the screen is a
 //! rule over the three, and `DEFER` exists so that a cheap screen cannot
@@ -121,16 +126,18 @@ fn minhash_into(elems: &[u64], salts: &[u64], out: &mut [u8]) {
 /// magnitude bit symmetrised over (u, v) and (v, u) is invariant under all
 /// sixteen.  The 64 lowest-frequency symmetric cells, by (u + v, u).
 ///
-/// Invariant, that is, under the symmetries of the stored block — which is
-/// itself not the symmetric image of the original's when the copy's
-/// thumbnail cells fall elsewhere: a flip moves the cell edges ⌊i·w/16⌋ by
-/// a pixel unless 16 divides the side, and a quarter turn swaps the two
-/// rounded passes of the integer DCT.  Magnitude bits near the block's
-/// median then flip (2.4–13.7 % per low-frequency bit on the PAPH-SI
+/// Invariant, that is, under the symmetries of the stored block.  On wire 3
+/// the block is itself not the symmetric image of the original's when the
+/// copy's thumbnail cells fall elsewhere: a flip moves the cell edges
+/// ⌊i·w/16⌋ by a pixel unless 16 divides the side, and a quarter turn swaps
+/// the two rounded passes of the integer DCT.  Magnitude bits near the
+/// block's median then flip (2.4–13.7 % per low-frequency bit on the PAPH-SI
 /// corpus' mirrored and rotated copies, `sibench route`), so a word read
-/// from this section is invariant only where those bits are.  The route
-/// reads G0 as an overlap, which tolerates that; an exact word needs
-/// symmetric sampling in the hasher.
+/// from a wire-3 block is invariant only where those bits are.  Wire 4's
+/// closed cells and single odd rounding make the block of a mirrored or
+/// turned copy the symmetric image of the original's exactly, so G0 is
+/// exact there.  The route reads G0 as an overlap either way, which a
+/// wire-3 side still needs.
 fn g0_dct(t: &Tier1) -> u64 {
     if t.flags & F_FLAT != 0 {
         return 0;
@@ -272,11 +279,11 @@ fn region_codes(t: &Tier1) -> Vec<u8> {
         let o = i * 41;
         let area = u32::from_le_bytes([s[o], s[o + 1], s[o + 2], s[o + 3]]) as i64;
         let per = u16::from_le_bytes([s[o + 4], s[o + 5]]) as i64;
-        let aspect = u16::from_le_bytes([s[o + 6], s[o + 7]]) as i64;
         let holes = s[o + 8] as u64;
         let iso = if area > 0 { per * per * 256 / area } else { 0 };
         let ic = [512i64, 1024, 2048, 4096, 8192, 16384, 32768].iter().filter(|&&t| iso >= t).count() as u64;
-        let asym = if aspect > 0 { aspect.max(65536 / aspect) } else { 256 };
+        // the box's elongation: exact on wire 4, wire 3's rounded ratio otherwise
+        let asym = t.shape_asym_q8(&s[o..o + 41]);
         let ac = [320i64, 410, 512, 768, 1280, 2048, 4096].iter().filter(|&&t| asym >= t).count() as u64;
         let hc = holes.min(3);
         out.push((ic | (ac << 3) | (hc << 6)) as u8);

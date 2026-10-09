@@ -118,6 +118,32 @@ pair in WebAssembly (see *popcounts* below).
 - *Two builds*: SIMD128 (`paph.wasm`) and baseline (`paph-baseline.wasm`), the glue picks by a
   31-byte probe module; `wasm-opt -O3`.
 
+## Wire 4 (1.2)
+
+`@pixagram/paph-x` 1.2 hashes in wire 4 ([SPEC-W4](SPEC-W4-paph-wire4.md)), which resamples the
+DCT, the brightness record (read from the resampled thumbnail), the shapes section and the
+silhouette. Measured on another machine than the tables above (one
+core of a shared 2.1 GHz Xeon), wire 3 beside wire 4 in the same run, best of five batches:
+
+| image | native, wire 4 | native, wire 3 | | WebAssembly SIMD, wire 4 | WebAssembly SIMD, wire 3 |
+|---|---:|---:|---|---:|---:|
+| sprite 128×128 (`rust/bench.sh`) · 96×96 (`npm run bench`) | 1.61 ms | 1.74 ms | | 1.40 ms | 1.29 ms |
+| scene 288×200 | 7.87 ms | 8.20 ms | | 11.4 ms | 11.3 ms |
+| work 512×384 | 34.6 ms | 33.1 ms | | 37.1 ms | 35.1 ms |
+| scene 1024×768 | 113 ms | 118 ms | | 171 ms | 170 ms |
+| banner 320×128 · tile 192×192 | 5.73 · 3.76 ms | 6.24 · 3.45 ms | | | |
+
+Within 9 % either way: 0.92–1.09× natively, 1.01–1.09× in WebAssembly
+(`docs/calibration/X3-PROVISIONAL.log`). Two things keep it there, both output-identical (the
+wire-4 digest holds them): the exact radial profiles step along each ray by carrying a remainder
+instead of dividing per step, and the shapes section measures each distinct small region shape
+once — regions of one small shape, as a dither leaves them on the grid, can tie in numbers at the
+eighth area, and each would otherwise be cast 32 rays and its holes counted.
+
+`npm run bench` now warms both WebAssembly builds up before it times anything: V8 runs a
+function in its baseline tier for its first calls, and the first image of the table — the
+sprite — was otherwise timed partly there.
+
 ## The equivalence discipline
 
 - **Digest**: `rust/src/equiv.rs` hashes and compares a deterministic synthetic corpus —
@@ -125,7 +151,9 @@ pair in WebAssembly (see *popcounts* below).
   crops, pastes, sixteen hash-time configurations, every comparator, the Tier-1-only path,
   corrupt wires, the JavaScript-shaped reports and the lean readings — one SHA-256 per case,
   3,160 cases. `rust/check.sh` diffs it against `test/equiv-digest.txt`; `npm run test:equiv`
-  computes it inside both WebAssembly builds. Every optimisation left it untouched; the only
+  computes it inside both WebAssembly builds. From 1.2 the same corpus runs again in wire 4
+  (`test/equiv-digest-4.txt`, 3,164 cases: comparator 42 under CAL-007, and the mixed-format
+  pairs every comparator must refuse), and both files are checked. Every optimisation left it untouched; the only
   outputs that moved are the Rust reference's parity fixes listed in the changelog, each
   making it do what the JavaScript engine (and the specification) already did.
 - **Unit tests** hold each fast path equal to the reference it replaced (kept, under `cfg(test)`):

@@ -1,0 +1,810 @@
+# docs/calibration/X3-PROVISIONAL.log — @pixagram/paph-x 1.2.0
+#
+# X3-PROVISIONAL — X2's schedule, bars, route derivation and door, bound to CAL-007-PROVISIONAL —
+# beside X2-PROVISIONAL (bound to CAL-004, --x2), on the corpora hashed in wire 4
+# (CAL-007-PROVISIONAL.log, runs 1-2); and wire 4's evidence: the route's global words, the SI cells
+# and the DCT section on every D4 copy, in both formats. Quoted by docs/PAPH-X.md (header, §2, §4's
+# 1.2.0 subsection, §5, §6), docs/SPEC-W4-paph-wire4.md §6 and §10, docs/SPEC-SI-paph-si.md §9.8 and §11,
+# docs/SEARCH.md, docs/PERFORMANCE.md, the README and the CHANGELOG.
+# Native, one core of a shared two-core container (Intel(R) Xeon(R) Processor @ 2.10GHz), rustc 1.97.0;
+# rust/target/release/{sibench,xbench,xcli}, run from rust/; Node 22.22 for the test/ and tools/ scripts,
+# run from the repository root. Counts, classes, recalls and artefacts are deterministic and reproduce
+# exactly from the same snapshot; timings move by a few per cent between runs, and more when the host is
+# busy.
+#
+# The snapshot is 1.1.2's (docs/calibration/SI3-PROVISIONAL.log, run 0): rust/target/chain-corpus,
+# head block 987642, manifest sha256 8d06cb4711e0e1e9c43dabe50edf3ed11039975a17dbc9bfec0afcf1dd27c055.
+# The images are not in the repository; no author or permlink appears in the output.
+#
+# The wire-3 runs read 1.1.2's caches kept beside the new ones: chain-w3.bin is 1.1.2's chain.bin
+# (sha256 c2985634154c9686…, as SI3-PROVISIONAL.log records), corpus-w3.bin the synthetic corpus
+# hashed in wire 3 (82a6de6706583d40…); `sibench corpus [--chain target/chain-corpus] --wire 3
+# --out NAME` writes each again byte for byte, and `load` notes their format. Under --x2 the SI
+# cells are SI2's (the profile bound to X2 for the synthetic corpus); SI3's on the chain's wire-3
+# hashes are in SI3-PROVISIONAL.log.
+#
+# The first pass of these runs found a defect in the cascade (docs/PAPH-X.md §4, "The fix the
+# measurement found"): `sibench lost` read two synthetic copy queries NotCopy under X3. Every run
+# below is on the fixed engine. rust/bench.sh and test/bench-engines.mjs time hashing in both
+# formats. Then the pair behind the fix, through `xcli` (`sibench dump` writes its wires; fast and
+# safe policy under copy scope, both orders, X3 and X2), and the ties the silhouette's component
+# choice can meet on free polyominoes (`tools/silhouette-ties.cjs`, docs/SPEC-W4-paph-wire4.md §6);
+# the last run prints the unit tests' result lines.
+
+$ sibench route --corpus chain.bin --real
+corpus: 11654 works (174 bases × 21 variants, 8000 distractors) opened and judged in 8.5 s
+Route class and pair screen on comparator-42 Copy pairs — X3-PROVISIONAL (route derivation 2, bars local 6 / band 3 / global 190, structural door on):
+
+| transform | copies | in the Reject class | rejected by the screen |
+|---|---:|---:|---:|
+| mirror | 174 | 0 | 0 |
+| rot90 | 173 | 0 | 0 |
+| rot180 | 174 | 0 | 0 |
+| transpose | 173 | 0 | 0 |
+| invert | 15 | 0 | 0 |
+| recolour | 172 | 0 | 0 |
+| chswap | 173 | 0 | 0 |
+| palshuffle | 1 | 1 | 0 |
+| up2 | 174 | 0 | 0 |
+| up3 | 174 | 0 | 0 |
+| down70 | 166 | 112 | 0 |
+| resample90 | 172 | 23 | 0 |
+| up150 | 173 | 22 | 0 |
+| crop80 | 173 | 0 | 0 |
+| crop67 | 169 | 1 | 0 |
+| corner50 | 163 | 36 | 0 |
+| paste | 157 | 16 | 0 |
+| shift1 | 174 | 0 | 0 |
+| dither | 173 | 44 | 0 |
+| matte | 172 | 0 | 0 |
+| total | 3095 | 255 | 0 |
+
+Unrelated pairs (each base against every other base but the 2 pairs comparator 42 calls Copy, 30098 pairs): the profile's bars put 93.6% in the Reject class; the largest bars that put no copy there — local 2 / band 1 / global 154 — put 21.4%.
+
+The route's global words on D4 copies (mirror, rot90, rot180, transpose; every base): share equal to the original's, under two partitions of the bases — the DCT thumbnail's (16 × 16 cells) and the shapes section's (cells of ⌈long side / 128⌉ px, sizes after the front end's integer downscale).
+
+| canvas | pairs | G0 (DCT) | G1 (runs) | G2 (adjacency) | G3 (regions) |
+|---|---:|---:|---:|---:|---:|
+| both sides multiples of 16 | 56 | 100% (56) | 100% (56) | 100% (56) | 100% (56) |
+| other sizes | 640 | 100% (640) | 100% (640) | 100% (640) | 100% (640) |
+| long side ≤ 128 px | 12 | 100% (12) | 100% (12) | 100% (12) | 100% (12) |
+| long side > 128 px | 684 | 100% (684) | 100% (684) | 100% (684) | 100% (684) |
+
+The SI cells (SI4-PROVISIONAL) on the same copies: share equal to the original's, of the pairs where the family is present in both (counts in brackets).
+
+| canvas | runs | tone | pal | shape | sil | kpgeo |
+|---|---:|---:|---:|---:|---:|---:|
+| both sides multiples of 16 | 100% (56/56) | 100% (56/56) | 100% (56/56) | 100% (56/56) | 100% (16/16) | 39% (22/56) |
+| other sizes | 100% (640/640) | 100% (640/640) | 100% (640/640) | 100% (640/640) | 100% (52/52) | 58% (367/636) |
+| long side ≤ 128 px | 100% (12/12) | 100% (12/12) | 100% (12/12) | 100% (12/12) | 100% (4/4) | 58% (7/12) |
+| long side > 128 px | 100% (684/684) | 100% (684/684) | 100% (684/684) | 100% (684/684) | 100% (64/64) | 56% (382/680) |
+
+The Tier-1 DCT section itself on the 692 D4 copies with a measurable thumbnail, aligned under the best of the eight symmetries: over the 63 AC coefficients of the lowest 8 x 8 frequencies, a magnitude bit differs from the original's on 0.0–0.0% of copies (median 0.0%), a sign bit on 0.0–0.3% (median 0.0%).
+
+$ sibench route --corpus chain.bin --real --x2
+corpus: 11654 works (174 bases × 21 variants, 8000 distractors) opened and judged in 8.6 s
+Route class and pair screen on comparator-42 Copy pairs — X2-PROVISIONAL (route derivation 2, bars local 6 / band 3 / global 190, structural door on):
+
+| transform | copies | in the Reject class | rejected by the screen |
+|---|---:|---:|---:|
+| mirror | 174 | 0 | 0 |
+| rot90 | 173 | 0 | 0 |
+| rot180 | 174 | 0 | 0 |
+| transpose | 173 | 0 | 0 |
+| invert | 15 | 0 | 0 |
+| recolour | 172 | 0 | 0 |
+| chswap | 173 | 0 | 0 |
+| palshuffle | 1 | 1 | 0 |
+| up2 | 174 | 0 | 0 |
+| up3 | 174 | 0 | 0 |
+| down70 | 166 | 112 | 0 |
+| resample90 | 172 | 23 | 0 |
+| up150 | 173 | 22 | 0 |
+| crop80 | 173 | 0 | 0 |
+| crop67 | 169 | 1 | 0 |
+| corner50 | 163 | 36 | 0 |
+| paste | 157 | 16 | 0 |
+| shift1 | 174 | 0 | 0 |
+| dither | 173 | 44 | 0 |
+| matte | 172 | 0 | 0 |
+| total | 3095 | 255 | 0 |
+
+Unrelated pairs (each base against every other base but the 2 pairs comparator 42 calls Copy, 30098 pairs): the profile's bars put 93.6% in the Reject class; the largest bars that put no copy there — local 2 / band 1 / global 154 — put 21.4%.
+
+The route's global words on D4 copies (mirror, rot90, rot180, transpose; every base): share equal to the original's, under two partitions of the bases — the DCT thumbnail's (16 × 16 cells) and the shapes section's (cells of ⌈long side / 128⌉ px, sizes after the front end's integer downscale).
+
+| canvas | pairs | G0 (DCT) | G1 (runs) | G2 (adjacency) | G3 (regions) |
+|---|---:|---:|---:|---:|---:|
+| both sides multiples of 16 | 56 | 100% (56) | 100% (56) | 100% (56) | 100% (56) |
+| other sizes | 640 | 100% (640) | 100% (640) | 100% (640) | 100% (640) |
+| long side ≤ 128 px | 12 | 100% (12) | 100% (12) | 100% (12) | 100% (12) |
+| long side > 128 px | 684 | 100% (684) | 100% (684) | 100% (684) | 100% (684) |
+
+The SI cells (SI2-PROVISIONAL) on the same copies: share equal to the original's, of the pairs where the family is present in both (counts in brackets).
+
+| canvas | runs | tone | pal | shape | sil | kpgeo |
+|---|---:|---:|---:|---:|---:|---:|
+| both sides multiples of 16 | 100% (56/56) | 100% (56/56) | 100% (56/56) | 100% (56/56) | 100% (16/16) | 79% (44/56) |
+| other sizes | 100% (640/640) | 100% (640/640) | 100% (640/640) | 100% (640/640) | 100% (52/52) | 86% (544/636) |
+| long side ≤ 128 px | 100% (12/12) | 100% (12/12) | 100% (12/12) | 100% (12/12) | 100% (4/4) | 50% (6/12) |
+| long side > 128 px | 100% (684/684) | 100% (684/684) | 100% (684/684) | 100% (684/684) | 100% (64/64) | 86% (582/680) |
+
+The Tier-1 DCT section itself on the 692 D4 copies with a measurable thumbnail, aligned under the best of the eight symmetries: over the 63 AC coefficients of the lowest 8 x 8 frequencies, a magnitude bit differs from the original's on 0.0–0.0% of copies (median 0.0%), a sign bit on 0.0–0.3% (median 0.0%).
+
+$ sibench route --corpus chain-w3.bin --real --x2     # 1.1.2's wires: the same snapshot hashed in wire 3
+note: target/si-corpus/chain-w3.bin holds wire-3 hashes, and this release writes wire 4: its measurements are of wire 3's sections (delete the file, or `sibench corpus` again, for this release's)
+corpus: 11654 works (174 bases × 21 variants, 8000 distractors) opened and judged in 8.5 s
+Route class and pair screen on comparator-42 Copy pairs — X2-PROVISIONAL (route derivation 2, bars local 6 / band 3 / global 190, structural door on):
+
+| transform | copies | in the Reject class | rejected by the screen |
+|---|---:|---:|---:|
+| mirror | 174 | 0 | 0 |
+| rot90 | 173 | 0 | 0 |
+| rot180 | 173 | 0 | 0 |
+| transpose | 173 | 0 | 0 |
+| invert | 17 | 0 | 0 |
+| recolour | 172 | 0 | 0 |
+| chswap | 173 | 0 | 0 |
+| palshuffle | 1 | 1 | 0 |
+| up2 | 174 | 0 | 0 |
+| up3 | 174 | 0 | 0 |
+| down70 | 166 | 117 | 0 |
+| resample90 | 171 | 25 | 0 |
+| up150 | 173 | 15 | 0 |
+| crop80 | 173 | 0 | 0 |
+| crop67 | 169 | 1 | 0 |
+| corner50 | 163 | 36 | 0 |
+| paste | 157 | 16 | 0 |
+| shift1 | 174 | 0 | 0 |
+| dither | 173 | 51 | 0 |
+| matte | 172 | 0 | 0 |
+| total | 3095 | 262 | 0 |
+
+Unrelated pairs (each base against every other base but the 2 pairs comparator 42 calls Copy, 30098 pairs): the profile's bars put 93.5% in the Reject class; the largest bars that put no copy there — local 1 / band 6 / global 141 — put 15.3%.
+
+The route's global words on D4 copies (mirror, rot90, rot180, transpose; every base): share equal to the original's, under two partitions of the bases — the DCT thumbnail's (16 × 16 cells) and the shapes section's (cells of ⌈long side / 128⌉ px, sizes after the front end's integer downscale).
+
+| canvas | pairs | G0 (DCT) | G1 (runs) | G2 (adjacency) | G3 (regions) |
+|---|---:|---:|---:|---:|---:|
+| both sides multiples of 16 | 56 | 96% (54) | 100% (56) | 100% (56) | 95% (53) |
+| other sizes | 640 | 25% (160) | 100% (640) | 100% (640) | 46% (293) |
+| long side ≤ 128 px | 12 | 25% (3) | 100% (12) | 100% (12) | 100% (12) |
+| long side > 128 px | 684 | 31% (211) | 100% (684) | 100% (684) | 49% (334) |
+
+The SI cells (SI2-PROVISIONAL) on the same copies: share equal to the original's, of the pairs where the family is present in both (counts in brackets).
+
+| canvas | runs | tone | pal | shape | sil | kpgeo |
+|---|---:|---:|---:|---:|---:|---:|
+| both sides multiples of 16 | 100% (56/56) | 100% (56/56) | 100% (56/56) | 75% (42/56) | 75% (12/16) | 79% (44/56) |
+| other sizes | 100% (640/640) | 96% (615/640) | 100% (640/640) | 72% (458/640) | 83% (43/52) | 86% (544/636) |
+| long side ≤ 128 px | 100% (12/12) | 100% (12/12) | 100% (12/12) | 67% (8/12) | 100% (4/4) | 50% (6/12) |
+| long side > 128 px | 100% (684/684) | 96% (659/684) | 100% (684/684) | 72% (492/684) | 80% (51/64) | 86% (582/680) |
+
+The Tier-1 DCT section itself on the 692 D4 copies with a measurable thumbnail, aligned under the best of the eight symmetries: over the 63 AC coefficients of the lowest 8 x 8 frequencies, a magnitude bit differs from the original's on 2.2–15.2% of copies (median 10.3%), a sign bit on 0.7–9.7% (median 5.8%).
+
+$ sibench route
+corpus: 10520 works (120 bases × 21 variants, 8000 distractors) opened and judged in 2.5 s
+Route class and pair screen on comparator-42 Copy pairs — X3-PROVISIONAL (route derivation 2, bars local 6 / band 3 / global 190, structural door on):
+
+| transform | copies | in the Reject class | rejected by the screen |
+|---|---:|---:|---:|
+| mirror | 92 | 0 | 0 |
+| rot90 | 65 | 0 | 0 |
+| rot180 | 93 | 0 | 0 |
+| transpose | 71 | 0 | 0 |
+| invert | 9 | 0 | 0 |
+| recolour | 75 | 4 | 0 |
+| chswap | 73 | 5 | 0 |
+| palshuffle | 20 | 3 | 0 |
+| up2 | 94 | 0 | 0 |
+| up3 | 93 | 0 | 0 |
+| resample90 | 15 | 5 | 0 |
+| up150 | 6 | 1 | 0 |
+| crop80 | 47 | 4 | 0 |
+| crop67 | 25 | 1 | 0 |
+| corner50 | 6 | 5 | 0 |
+| paste | 40 | 9 | 0 |
+| shift1 | 84 | 0 | 0 |
+| dither | 20 | 8 | 0 |
+| matte | 67 | 1 | 0 |
+| total | 995 | 46 | 0 |
+
+Unrelated pairs (each base against 40 distractors and 5 other bases, 5400 pairs): the profile's bars put 93.4% in the Reject class; the largest bars that put no copy there — local 1 / band 3 / global 162 — put 54.9%.
+
+The route's global words on D4 copies (mirror, rot90, rot180, transpose; every base): share equal to the original's, under two partitions of the bases — the DCT thumbnail's (16 × 16 cells) and the shapes section's (cells of ⌈long side / 128⌉ px, sizes after the front end's integer downscale).
+
+| canvas | pairs | G0 (DCT) | G1 (runs) | G2 (adjacency) | G3 (regions) |
+|---|---:|---:|---:|---:|---:|
+| both sides multiples of 16 | 180 | 100% (180) | 100% (180) | 100% (180) | 100% (180) |
+| other sizes | 300 | 100% (300) | 100% (300) | 100% (300) | 100% (300) |
+| long side ≤ 128 px | 220 | 100% (220) | 100% (220) | 100% (220) | 100% (220) |
+| long side > 128 px | 260 | 100% (260) | 100% (260) | 100% (260) | 100% (260) |
+
+The SI cells (SI4-PROVISIONAL) on the same copies: share equal to the original's, of the pairs where the family is present in both (counts in brackets).
+
+| canvas | runs | tone | pal | shape | sil | kpgeo |
+|---|---:|---:|---:|---:|---:|---:|
+| both sides multiples of 16 | 100% (180/180) | 100% (180/180) | 100% (180/180) | 100% (180/180) | 100% (100/100) | 65% (60/92) |
+| other sizes | 100% (300/300) | 100% (300/300) | 100% (300/300) | 100% (300/300) | 100% (204/204) | 67% (118/176) |
+| long side ≤ 128 px | 100% (220/220) | 100% (220/220) | 100% (220/220) | 100% (220/220) | 100% (144/144) | 66% (40/61) |
+| long side > 128 px | 100% (260/260) | 100% (260/260) | 100% (260/260) | 100% (260/260) | 100% (160/160) | 67% (138/207) |
+
+The Tier-1 DCT section itself on the 468 D4 copies with a measurable thumbnail, aligned under the best of the eight symmetries: over the 63 AC coefficients of the lowest 8 x 8 frequencies, a magnitude bit differs from the original's on 0.0–0.0% of copies (median 0.0%), a sign bit on 0.0–1.3% (median 0.4%).
+
+$ sibench route --corpus corpus-w3.bin --x2     # the synthetic corpus in wire 3
+note: target/si-corpus/corpus-w3.bin holds wire-3 hashes, and this release writes wire 4: its measurements are of wire 3's sections (delete the file, or `sibench corpus` again, for this release's)
+corpus: 10520 works (120 bases × 21 variants, 8000 distractors) opened and judged in 2.6 s
+Route class and pair screen on comparator-42 Copy pairs — X2-PROVISIONAL (route derivation 2, bars local 6 / band 3 / global 190, structural door on):
+
+| transform | copies | in the Reject class | rejected by the screen |
+|---|---:|---:|---:|
+| mirror | 86 | 0 | 0 |
+| rot90 | 63 | 0 | 0 |
+| rot180 | 87 | 0 | 0 |
+| transpose | 70 | 0 | 0 |
+| invert | 7 | 0 | 0 |
+| recolour | 75 | 3 | 0 |
+| chswap | 72 | 5 | 0 |
+| palshuffle | 20 | 2 | 0 |
+| up2 | 94 | 0 | 0 |
+| up3 | 93 | 0 | 0 |
+| resample90 | 15 | 4 | 0 |
+| up150 | 6 | 1 | 0 |
+| crop80 | 47 | 5 | 0 |
+| crop67 | 25 | 1 | 0 |
+| corner50 | 5 | 4 | 0 |
+| paste | 40 | 9 | 0 |
+| shift1 | 84 | 0 | 0 |
+| dither | 20 | 8 | 0 |
+| matte | 67 | 0 | 0 |
+| total | 976 | 42 | 0 |
+
+Unrelated pairs (each base against 40 distractors and 5 other bases, 5400 pairs): the profile's bars put 93.4% in the Reject class; the largest bars that put no copy there — local 1 / band 3 / global 164 — put 55.2%.
+
+The route's global words on D4 copies (mirror, rot90, rot180, transpose; every base): share equal to the original's, under two partitions of the bases — the DCT thumbnail's (16 × 16 cells) and the shapes section's (cells of ⌈long side / 128⌉ px, sizes after the front end's integer downscale).
+
+| canvas | pairs | G0 (DCT) | G1 (runs) | G2 (adjacency) | G3 (regions) |
+|---|---:|---:|---:|---:|---:|
+| both sides multiples of 16 | 180 | 87% (156) | 100% (180) | 100% (180) | 83% (149) |
+| other sizes | 300 | 41% (122) | 100% (300) | 100% (300) | 84% (253) |
+| long side ≤ 128 px | 220 | 65% (144) | 100% (220) | 100% (220) | 99% (217) |
+| long side > 128 px | 260 | 52% (134) | 100% (260) | 100% (260) | 71% (185) |
+
+The SI cells (SI2-PROVISIONAL) on the same copies: share equal to the original's, of the pairs where the family is present in both (counts in brackets).
+
+| canvas | runs | tone | pal | shape | sil | kpgeo |
+|---|---:|---:|---:|---:|---:|---:|
+| both sides multiples of 16 | 100% (180/180) | 100% (180/180) | 100% (180/180) | 74% (134/180) | 74% (74/100) | 61% (56/92) |
+| other sizes | 100% (300/300) | 98% (295/300) | 100% (300/300) | 80% (239/300) | 72% (147/204) | 56% (99/176) |
+| long side ≤ 128 px | 100% (220/220) | 100% (219/220) | 100% (220/220) | 76% (167/220) | 76% (109/144) | 61% (37/61) |
+| long side > 128 px | 100% (260/260) | 98% (256/260) | 100% (260/260) | 79% (206/260) | 70% (112/160) | 57% (118/207) |
+
+The Tier-1 DCT section itself on the 468 D4 copies with a measurable thumbnail, aligned under the best of the eight symmetries: over the 63 AC coefficients of the lowest 8 x 8 frequencies, a magnitude bit differs from the original's on 2.4–13.7% of copies (median 6.8%), a sign bit on 1.3–9.6% (median 4.5%).
+
+$ sibench lost --corpus chain.bin
+corpus: 11654 works (174 bases × 21 variants, 8000 distractors) opened and judged in 8.6 s
+0 of 6190 comparator-42 Copy queries not read Copy by XRank alone (X3-PROVISIONAL)
+comparator 42's own gated rank (its stage-1 screen, either profile) screens out 9 of 3095 comparator-42 Copy pairs, 5 of them because a side has fewer keypoints than geo_min_corr (8) and so can never pass; XRank's route reads 9 of the 9 as Fast under X3-PROVISIONAL, and does not gate those: mirror 1 of 174, rot180 1 of 174, invert 4 of 15, up2 1 of 174, up3 1 of 174, shift1 1 of 174
+
+$ sibench lost --corpus chain.bin --x2
+corpus: 11654 works (174 bases × 21 variants, 8000 distractors) opened and judged in 8.9 s
+0 of 6190 comparator-42 Copy queries not read Copy by XRank alone (X2-PROVISIONAL)
+comparator 42's own gated rank (its stage-1 screen, either profile) screens out 9 of 3095 comparator-42 Copy pairs, 5 of them because a side has fewer keypoints than geo_min_corr (8) and so can never pass; XRank's route reads 9 of the 9 as Fast under X2-PROVISIONAL, and does not gate those: mirror 1 of 174, rot180 1 of 174, invert 4 of 15, up2 1 of 174, up3 1 of 174, shift1 1 of 174
+
+$ sibench lost
+corpus: 10520 works (120 bases × 21 variants, 8000 distractors) opened and judged in 2.6 s
+lost under X1, kept: base 25 chswap     route class Reject (X1: Reject), pair screen Defer (structure), pools 0/0, state 3
+lost under X1, kept: base 25 chswap     route class Reject (X1: Reject), pair screen Defer (structure), pools 0/0, state 3
+lost under X1, kept: base 54 palshuffle route class Reject (X1: Reject), pair screen Defer (structure), pools 0/0, state 3
+lost under X1, kept: base 54 palshuffle route class Reject (X1: Reject), pair screen Defer (structure), pools 0/0, state 3
+lost under X1, kept: base 116 chswap     route class Fast (X1: Defer), pair screen Pass (route), pools 0/0, state 3
+lost under X1, kept: base 116 chswap     route class Fast (X1: Defer), pair screen Pass (route), pools 0/0, state 3
+0 of 1990 comparator-42 Copy queries not read Copy by XRank alone (X3-PROVISIONAL)
+comparator 42's own gated rank (its stage-1 screen, either profile) screens out 194 of 995 comparator-42 Copy pairs, 177 of them because a side has fewer keypoints than geo_min_corr (8) and so can never pass; XRank's route reads 188 of the 194 as Fast under X3-PROVISIONAL, and does not gate those: mirror 28 of 92, rot90 4 of 65, rot180 31 of 93, transpose 5 of 71, invert 7 of 9, recolour 19 of 75, chswap 13 of 73, palshuffle 4 of 20, up2 27 of 94, up3 27 of 93, crop80 1 of 47, shift1 19 of 84, matte 9 of 67
+
+$ sibench lost --x2
+corpus: 10520 works (120 bases × 21 variants, 8000 distractors) opened and judged in 2.6 s
+lost under X1, kept: base 25 chswap     route class Reject (X1: Reject), pair screen Defer (structure), pools 0/0, state 3
+lost under X1, kept: base 25 chswap     route class Reject (X1: Reject), pair screen Defer (structure), pools 0/0, state 3
+lost under X1, kept: base 54 palshuffle route class Reject (X1: Reject), pair screen Defer (structure), pools 0/0, state 3
+lost under X1, kept: base 54 palshuffle route class Reject (X1: Reject), pair screen Defer (structure), pools 0/0, state 3
+lost under X1, kept: base 116 chswap     route class Fast (X1: Defer), pair screen Pass (route), pools 0/0, state 3
+lost under X1, kept: base 116 chswap     route class Fast (X1: Defer), pair screen Pass (route), pools 0/0, state 3
+0 of 1990 comparator-42 Copy queries not read Copy by XRank alone (X2-PROVISIONAL)
+comparator 42's own gated rank (its stage-1 screen, either profile) screens out 194 of 995 comparator-42 Copy pairs, 177 of them because a side has fewer keypoints than geo_min_corr (8) and so can never pass; XRank's route reads 188 of the 194 as Fast under X2-PROVISIONAL, and does not gate those: mirror 28 of 92, rot90 4 of 65, rot180 31 of 93, transpose 5 of 71, invert 7 of 9, recolour 19 of 75, chswap 13 of 73, palshuffle 4 of 20, up2 27 of 94, up3 27 of 93, crop80 1 of 47, shift1 19 of 84, matte 9 of 67
+
+$ sibench doorprof --corpus chain.bin --real
+corpus: 11654 works (174 bases × 21 variants, 8000 distractors) opened and judged in 8.7 s
+The structural door on 15049 unrelated pairs (every pair of distinct bases but the 2 comparator 42 calls Copy): 61.3 µs a pair natively, open on 0.
+  shut before any channel: not certifiable 0, the bar out of reach 0
+  shut after runs         0
+  shut after silhouette   0
+  shut after local bound  1077
+  shut after topology     4299
+  shut after shape        9673
+  shut after dct          0
+  shut after palette      0
+Per call, over the 15049 certifiable pairs (µs): runs 0.2, silhouette 0.0, local bound 18.4, topology 26.2, shape 28.0, dct 22.0, palette 29.2.
+Expected cost per certifiable pair: the shipped order 61.3 µs; the cascade's own order 87.6 µs.
+  the cheapest orders: local bound, runs, silhouette, shape, dct, topology, palette — 49.9 µs
+  the cheapest orders: runs, local bound, silhouette, shape, dct, topology, palette — 49.9 µs
+  the cheapest orders: runs, local bound, silhouette, shape, dct, palette, topology — 49.9 µs
+
+$ sibench xtrace
+xtrace: chain pairs (42.3 s)
+xtrace: target/si-corpus/chain.bin (55.5 s)
+xtrace: target/si-corpus/corpus.bin (58.9 s)
+chain: 28094 queries reached the cascade's geometry; 0 found a model at some tier, 0 only after the anchor tier (0 with no weak signal there either); 26214 measured all four tiers.
+realbase: 6890 queries reached the cascade's geometry; 6182 found a model at some tier, 156 only after the anchor tier (50 with no weak signal there either); 728 measured all four tiers.
+synth: 1988 queries reached the cascade's geometry; 1734 found a model at some tier, 86 only after the anchor tier (22 with no weak signal there either); 154 measured all four tiers.
+
+An exit after anchor tier k when no tier so far found a model and the weak signal stayed at or below w: the queries between two authors' works it stops, the rows it saves them, and the copy queries (XRank Suspected or Copy) whose model or weak signal appears only on a later tier.
+
+| exit after | w | unrelated stopped | rows saved a query | copies at risk |
+|---|---:|---:|---:|---:|
+| tier 0 (96 rows) | 0 | 27708 of 28094 | 370 | 122 |
+| tier 0 (96 rows) | 3 | 27766 of 28094 | 371 | 150 |
+| tier 0 (96 rows) | 5 | 27774 of 28094 | 371 | 206 |
+| tier 1 (160 rows) | 0 | 26662 of 28094 | 311 | 56 |
+| tier 1 (160 rows) | 3 | 26844 of 28094 | 313 | 62 |
+| tier 1 (160 rows) | 5 | 26858 of 28094 | 313 | 84 |
+| tier 2 (256 rows) | 0 | 25836 of 28094 | 220 | 26 |
+| tier 2 (256 rows) | 3 | 26196 of 28094 | 223 | 26 |
+| tier 2 (256 rows) | 5 | 26214 of 28094 | 223 | 40 |
+
+$ sibench xtime
+  the scan: 447 rows a query, 16.8 candidates nominated a row (both hypotheses), 16.6 distances a row, 0.00% of rows dense
+CAL-004-PROPOSED (9599 queries between two authors' works): XRank 722 µs a query; the sparse scan of every row 416 µs (comparator 42's exhaustive scans, both hypotheses: 746 µs); pools and one measurement on every row 14 µs; one per anchor tier (four) 43 µs; every structural channel exactly 226 µs.
+  the scan: 447 rows a query, 16.8 candidates nominated a row (both hypotheses), 16.6 distances a row, 0.00% of rows dense
+CAL-007-PROVISIO (9599 queries between two authors' works): XRank 642 µs a query; the sparse scan of every row 405 µs (comparator 42's exhaustive scans, both hypotheses: 732 µs); pools and one measurement on every row 13 µs; one per anchor tier (four) 42 µs; every structural channel exactly 223 µs.
+
+$ xbench
+PAPH-X benchmark — base CAL-007-PROVISIO (741afad9252f2ccb), X X3-PROVISIONAL (8af84dd0abb12192)
+corpus: 344 works
+hash      p50   2883.1  p90   9794.2  p95  12507.2  p99  26260.2 us  (n=344)
+prepare42 p50      6.9  p90     22.2  p95     23.4  p99     31.7 us  (n=344)
+xprepare  p50    192.8  p90   1332.9  p95   1417.1  p99   1512.4 us  (n=344)  (total 1.8 s)
+pairs: 2379
+
+== allocations: 200 xscreen calls: 0 allocations, 0 bytes (first-call warm-up: 1 allocations)
+
+== pairwise timings (native, one core)
+screen42      p50     29.5  p90    306.9  p95    521.3  p99    885.4 us  (n=2379)
+xscreen       p50     30.4  p90     92.0  p95    110.6  p99    161.8 us  (n=2379)
+compare42     p50    370.8  p90    835.2  p95   1037.5  p99   1422.0 us  (n=2379)
+xcompare fast p50     35.4  p90    401.9  p95    527.8  p99    807.0 us  (n=2379)
+xcompare safe p50    163.4  p90    451.3  p95    576.8  p99   1039.5 us  (n=2379)
+speedups p50: screen 1.0x  compare fast 10.5x  compare safe 2.3x;  screen p95 4.7x
+
+== per class (p50 us): screen42 / xscreen / compare42 / xfast / xsafe
+corner                0.5      1.0    350.6     92.9    174.2   n=14
+crop                  2.0      7.6    453.0    115.5    337.9   n=14
+dither                4.1     31.0    368.5     48.4     78.0   n=14
+down                  4.3     25.8    351.2     56.2    115.9   n=14
+invert                7.7      6.9    570.4    368.3    388.8   n=14
+matte                12.0     25.0    512.1    202.3    224.1   n=14
+mirror               10.2     25.4    597.8    219.2    210.7   n=14
+neg:base             10.1     18.5    311.3     29.3    123.6   n=121
+neg:corner            1.0     10.2    301.4     22.8     91.0   n=21
+neg:crop              3.0     18.4    300.9     28.3    112.0   n=21
+neg:dither           27.2     38.8    365.1     35.5    182.4   n=16
+neg:down              5.5     20.8    309.1     29.6    102.4   n=28
+neg:invert           13.5     25.9    328.6     29.8    188.9   n=27
+neg:large            64.9     48.1    439.5     55.4    211.3   n=931
+neg:matte            34.1     38.5    389.7     34.1    165.9   n=22
+neg:mirror           16.4     24.2    305.4     25.8    111.3   n=23
+neg:noise            39.5     38.5    416.2     38.1    195.9   n=62
+neg:paste            76.9     32.2    443.3     73.8    258.4   n=22
+neg:random           48.7     41.3    367.5     35.1     99.2   n=123
+neg:recolour         11.3     22.0    341.6     27.2    127.2   n=22
+neg:resample         30.8     52.1    391.0     51.4    128.5   n=24
+neg:rot180           10.8     23.3    301.5     28.4     82.0   n=19
+neg:rot90            13.8     24.5    307.4     23.7     97.9   n=26
+neg:same-style       12.2     20.8    309.2     27.1    141.5   n=472
+neg:shift1           10.7     21.6    313.2     28.8    134.5   n=33
+neg:texture           1.0      1.4    196.5      9.9     60.8   n=64
+neg:transpose        13.1     27.2    331.7     23.4    138.2   n=25
+neg:up2              24.4     31.7    344.3     28.1    157.7   n=28
+neg:up3              15.3     23.3    310.9     24.1    141.8   n=25
+paste               100.0     60.8    603.4    232.9    286.0   n=14
+recolour              5.2     20.3    546.8    165.0    194.4   n=14
+resample              9.9     55.3    508.6    112.2    181.9   n=14
+rot180                8.6     19.7    559.7    177.6    161.1   n=14
+rot90                10.3     23.9    563.5    166.2    216.4   n=14
+shift1               11.3     20.1    553.5    201.8    209.7   n=14
+transpose             8.7     19.5    502.3    210.0    241.5   n=14
+up2                   9.1     21.0    533.7    204.3    219.5   n=14
+up3                   8.2     21.1    513.4    196.2    213.2   n=14
+
+== agreement with comparator 42 (lean), per class
+class                n  42copy  Xsafe=  Xsafe≠    fbk%  Xfast=  defer%   scr42%    xscr%
+corner              14       3      14       0    7.1%       9    7.1%    21.4%    64.3%
+crop                14       5      14       0   21.4%       8   21.4%    28.6%    78.6%
+dither              14       4      14       0    7.1%       7    7.1%    28.6%    57.1%
+down                14       0      14       0   14.3%       8   14.3%     7.1%    50.0%
+invert              14       1      14       0   14.3%      12   14.3%    21.4%   100.0%
+matte               14       9      14       0   14.3%      12   14.3%    64.3%   100.0%
+mirror              14      11      14       0    7.1%      13    7.1%    64.3%   100.0%
+neg:base           121       0     121       0    0.0%      94    0.0%     2.5%    28.1%
+neg:corner          21       0      21       0    0.0%      17    0.0%     0.0%    23.8%
+neg:crop            21       0      21       0    0.0%      18    0.0%     4.8%    23.8%
+neg:dither          16       0      16       0    0.0%      11    0.0%     0.0%    25.0%
+neg:down            28       0      28       0    0.0%      23    0.0%     0.0%    21.4%
+neg:invert          27       0      27       0    0.0%      21    0.0%     0.0%    25.9%
+neg:large          931       0     931       0    0.8%     666    0.8%     5.7%    45.0%
+neg:matte           22       0      22       0    0.0%      17    0.0%     4.5%    22.7%
+neg:mirror          23       0      23       0    0.0%      16    0.0%     0.0%    26.1%
+neg:noise           62       0      62       0    0.0%      57    0.0%    14.5%    45.2%
+neg:paste           22       0      22       0    0.0%      18    0.0%     0.0%    50.0%
+neg:random         123       0     123       0    0.0%     123    0.0%     0.0%    22.0%
+neg:recolour        22       0      22       0    0.0%      19    0.0%     0.0%    27.3%
+neg:resample        24       0      24       0    0.0%      20    0.0%     0.0%    29.2%
+neg:rot180          19       0      19       0    0.0%      13    0.0%     0.0%    36.8%
+neg:rot90           26       0      26       0    0.0%      21    0.0%     3.8%    30.8%
+neg:same-style     472       0     472       0    0.2%     356    0.2%     2.5%    31.4%
+neg:shift1          33       0      33       0    0.0%      22    0.0%     3.0%    36.4%
+neg:texture         64       0      64       0    0.0%      62    0.0%     0.0%    31.2%
+neg:transpose       25       0      25       0    0.0%      20    0.0%     4.0%    28.0%
+neg:up2             28       0      28       0    0.0%      20    0.0%     0.0%    28.6%
+neg:up3             25       0      25       0    4.0%      17    4.0%     4.0%    20.0%
+paste               14       6      14       0   28.6%       7   28.6%    50.0%    78.6%
+recolour            14      10      14       0   14.3%      11   14.3%    57.1%    92.9%
+resample            14       4      14       0    0.0%       9    0.0%    28.6%    64.3%
+rot180              14      11      14       0    7.1%      13    7.1%    57.1%   100.0%
+rot90               14       9      14       0   14.3%      12   14.3%    64.3%   100.0%
+shift1              14      11      14       0    7.1%      13    7.1%    57.1%   100.0%
+transpose           14      10      14       0    7.1%      13    7.1%    71.4%   100.0%
+up2                 14      13      14       0    7.1%      13    7.1%    71.4%   100.0%
+up3                 14      13      14       0    7.1%      13    7.1%    71.4%   100.0%
+
+fallback rate (safe): 1.4%   full Hamming pairs: 42 123338942  X 1221574  (99.0% fewer)
+screen hard-rejected a 42-Copy: 0  | safe copy-disagreements: 0  | fast false Copy: 0
+safe verdict differences (any state): 0 of 2379 pairs
+
+== rank: one query against N candidates (native)
+N=100   query B09 (512 kp): rank42   56445.9 us [23 survivors, 15 copies]   xrank   24059.3 us [29 compared, 2 fallbacks, 15 copies]  → 2.3x   (5461 allocations/run)
+N=100   query B11 (25 kp): rank42    7016.1 us [9 survivors, 9 copies]   xrank   10108.1 us [12 compared, 10 fallbacks, 9 copies]  → 0.7x   (14596 allocations/run)
+N=100   query B12 (0 kp): rank42      37.1 us [0 survivors, 0 copies]   xrank      29.7 us [2 compared, 0 fallbacks, 2 copies]  → 1.2x   (0 allocations/run)
+N=100   aggregate over the three queries: rank42 63499.0 us  xrank 34197.1 us  → 1.9x
+REFERENCE 512-kp class: query B09 (512 kp) vs 100 candidates (mean 361 kp): rank42 81219.3 us [16 survivors, 15 copies]   xrank 25669.7 us [37 compared, 2 fallbacks, 15 copies]  → 3.2x
+N=1000  query B09 (512 kp): rank42  323469.1 us [61 survivors, 15 copies]   xrank  130800.5 us [125 compared, 2 fallbacks, 15 copies]  → 2.5x   (17611 allocations/run)
+N=1000  query B11 (25 kp): rank42   33178.3 us [9 survivors, 9 copies]   xrank   43111.0 us [15 compared, 10 fallbacks, 9 copies]  → 0.8x   (15553 allocations/run)
+N=1000  query B12 (0 kp): rank42     514.6 us [0 survivors, 0 copies]   xrank     642.4 us [2 compared, 0 fallbacks, 2 copies]  → 0.8x   (0 allocations/run)
+N=1000  aggregate over the three queries: rank42 357161.9 us  xrank 174553.9 us  → 2.0x
+route-only screen of 10,000 candidates: 115.2 us  (11.52 ns per candidate; 9117 route-rejected)
+
+$ xbench --x2
+PAPH-X benchmark — base CAL-004-PROPOSED (91b545f801f5a095), X X2-PROVISIONAL (27993afaaca76d11)
+corpus: 344 works
+hash      p50   2803.1  p90   9521.6  p95  11203.3  p99  26466.7 us  (n=344)
+prepare42 p50      6.9  p90     21.6  p95     22.8  p99     25.5 us  (n=344)
+xprepare  p50    183.8  p90   1297.4  p95   1378.2  p99   1425.5 us  (n=344)  (total 1.7 s)
+pairs: 2379
+
+== allocations: 200 xscreen calls: 0 allocations, 0 bytes (first-call warm-up: 1 allocations)
+
+== pairwise timings (native, one core)
+screen42      p50     30.9  p90    323.2  p95    546.1  p99    924.1 us  (n=2379)
+xscreen       p50     31.8  p90     94.7  p95    113.8  p99    191.0 us  (n=2379)
+compare42     p50    391.6  p90    859.3  p95   1099.4  p99   1501.5 us  (n=2379)
+xcompare fast p50     37.0  p90    419.1  p95    563.0  p99    864.0 us  (n=2379)
+xcompare safe p50    176.2  p90    476.0  p95    615.4  p99    986.8 us  (n=2379)
+speedups p50: screen 1.0x  compare fast 10.6x  compare safe 2.2x;  screen p95 4.8x
+
+== per class (p50 us): screen42 / xscreen / compare42 / xfast / xsafe
+corner                0.7      1.1    390.3     89.7    186.9   n=14
+crop                  2.2      8.1    500.1    108.9    243.1   n=14
+dither                5.7     30.0    375.2     73.3    137.1   n=14
+down                  5.6     27.4    386.9     56.7    205.4   n=14
+invert                7.6      6.5    612.8    389.6    370.9   n=14
+matte                12.6     17.7    633.7    258.4    258.1   n=14
+mirror               10.2     20.4    635.1    223.8    202.3   n=14
+neg:base             11.0     21.1    330.0     29.7    139.3   n=121
+neg:corner            1.3     12.5    322.5     26.7    116.2   n=21
+neg:crop              3.4     19.8    315.1     25.9    114.7   n=21
+neg:dither           27.4     40.9    379.4     31.3    202.3   n=16
+neg:down              5.4     22.0    341.0     29.7    110.2   n=28
+neg:invert           15.1     29.2    373.9     30.7    191.5   n=27
+neg:large            67.1     49.9    462.0     57.2    227.6   n=931
+neg:matte            35.2     40.4    401.0     33.8    184.3   n=22
+neg:mirror           18.8     32.9    341.7     30.7    146.5   n=23
+neg:noise            40.5     38.5    418.0     38.5    154.5   n=62
+neg:paste            85.8     33.4    475.1     85.5    268.9   n=22
+neg:random           49.2     43.6    375.5     38.0    100.8   n=123
+neg:recolour         17.0     24.1    395.7     27.4    129.3   n=22
+neg:resample         31.2     50.7    431.6     54.9    154.1   n=24
+neg:rot180           11.1     22.6    316.8     32.0    112.9   n=19
+neg:rot90            15.7     25.1    351.4     23.8    161.9   n=26
+neg:same-style       12.9     22.0    335.0     28.0    150.1   n=472
+neg:shift1           10.8     24.2    342.3     30.0    148.2   n=33
+neg:texture           1.1      1.3    201.3     10.4     62.7   n=64
+neg:transpose        14.5     29.4    336.3     30.2    156.5   n=25
+neg:up2              26.9     32.5    367.6     33.5    188.9   n=28
+neg:up3              18.1     29.0    339.6     24.1    149.2   n=25
+paste               106.3     68.1    679.5    306.5    308.4   n=14
+recolour              6.0      8.7    576.9    124.3    188.1   n=14
+resample             10.4     63.8    515.6    120.6    128.1   n=14
+rot180                9.2     20.1    587.5    174.8    164.4   n=14
+rot90                11.4     24.4    597.0     98.6    192.2   n=14
+shift1               11.3     22.6    620.1    215.3    206.8   n=14
+transpose             9.8     22.7    558.1    239.8    211.4   n=14
+up2                   9.3     22.0    574.8    198.3    213.5   n=14
+up3                   8.8     16.7    537.2    199.0    281.3   n=14
+
+== agreement with comparator 42 (lean), per class
+class                n  42copy  Xsafe=  Xsafe≠    fbk%  Xfast=  defer%   scr42%    xscr%
+corner              14       3      14       0    7.1%       9    7.1%    21.4%    64.3%
+crop                14       5      14       0   21.4%       8   21.4%    28.6%    78.6%
+dither              14       4      14       0    7.1%       7    7.1%    28.6%    57.1%
+down                14       0      14       0   14.3%       8   14.3%     7.1%    50.0%
+invert              14       1      14       0    7.1%      13    7.1%    21.4%   100.0%
+matte               14       9      14       0   14.3%      12   14.3%    64.3%   100.0%
+mirror              14      11      14       0    7.1%      13    7.1%    64.3%   100.0%
+neg:base           121       0     121       0    0.0%      94    0.0%     2.5%    28.1%
+neg:corner          21       0      21       0    0.0%      17    0.0%     0.0%    23.8%
+neg:crop            21       0      21       0    0.0%      18    0.0%     4.8%    23.8%
+neg:dither          16       0      16       0    0.0%      11    0.0%     0.0%    25.0%
+neg:down            28       0      28       0    0.0%      23    0.0%     0.0%    21.4%
+neg:invert          27       0      27       0    0.0%      21    0.0%     0.0%    25.9%
+neg:large          931       0     931       0    0.8%     666    0.8%     5.7%    45.0%
+neg:matte           22       0      22       0    0.0%      17    0.0%     4.5%    22.7%
+neg:mirror          23       0      23       0    0.0%      16    0.0%     0.0%    26.1%
+neg:noise           62       0      62       0    0.0%      57    0.0%    14.5%    45.2%
+neg:paste           22       0      22       0    0.0%      18    0.0%     0.0%    50.0%
+neg:random         123       0     123       0    0.0%     123    0.0%     0.0%    22.0%
+neg:recolour        22       0      22       0    0.0%      19    0.0%     0.0%    27.3%
+neg:resample        24       0      24       0    0.0%      20    0.0%     0.0%    29.2%
+neg:rot180          19       0      19       0    0.0%      13    0.0%     0.0%    36.8%
+neg:rot90           26       0      26       0    0.0%      21    0.0%     3.8%    30.8%
+neg:same-style     472       0     472       0    0.2%     356    0.2%     2.5%    31.4%
+neg:shift1          33       0      33       0    0.0%      22    0.0%     3.0%    36.4%
+neg:texture         64       0      64       0    0.0%      62    0.0%     0.0%    31.2%
+neg:transpose       25       0      25       0    0.0%      20    0.0%     4.0%    28.0%
+neg:up2             28       0      28       0    0.0%      20    0.0%     0.0%    28.6%
+neg:up3             25       0      25       0    4.0%      17    4.0%     4.0%    20.0%
+paste               14       6      14       0   28.6%       7   28.6%    50.0%    78.6%
+recolour            14      10      14       0   14.3%      11   14.3%    57.1%    92.9%
+resample            14       4      14       0    0.0%       9    0.0%    28.6%    64.3%
+rot180              14      11      14       0    7.1%      13    7.1%    57.1%   100.0%
+rot90               14       9      14       0   14.3%      12   14.3%    64.3%   100.0%
+shift1              14      11      14       0    7.1%      13    7.1%    57.1%   100.0%
+transpose           14      10      14       0    7.1%      13    7.1%    71.4%   100.0%
+up2                 14      13      14       0    7.1%      13    7.1%    71.4%   100.0%
+up3                 14      13      14       0    7.1%      13    7.1%    71.4%   100.0%
+
+fallback rate (safe): 1.4%   full Hamming pairs: 42 123338942  X 1221574  (99.0% fewer)
+screen hard-rejected a 42-Copy: 0  | safe copy-disagreements: 0  | fast false Copy: 0
+safe verdict differences (any state): 0 of 2379 pairs
+
+== rank: one query against N candidates (native)
+N=100   query B09 (512 kp): rank42   61042.4 us [23 survivors, 15 copies]   xrank   26150.6 us [29 compared, 2 fallbacks, 15 copies]  → 2.3x   (5649 allocations/run)
+N=100   query B11 (25 kp): rank42    7458.5 us [9 survivors, 9 copies]   xrank   11043.2 us [12 compared, 10 fallbacks, 9 copies]  → 0.7x   (14632 allocations/run)
+N=100   query B12 (0 kp): rank42      38.5 us [0 survivors, 0 copies]   xrank      32.4 us [2 compared, 0 fallbacks, 2 copies]  → 1.2x   (0 allocations/run)
+N=100   aggregate over the three queries: rank42 68539.3 us  xrank 37226.2 us  → 1.8x
+REFERENCE 512-kp class: query B09 (512 kp) vs 100 candidates (mean 361 kp): rank42 89614.5 us [16 survivors, 15 copies]   xrank 28987.9 us [37 compared, 2 fallbacks, 15 copies]  → 3.1x
+N=1000  query B09 (512 kp): rank42  342933.7 us [61 survivors, 15 copies]   xrank  138485.6 us [125 compared, 2 fallbacks, 15 copies]  → 2.5x   (18567 allocations/run)
+N=1000  query B11 (25 kp): rank42   34783.7 us [9 survivors, 9 copies]   xrank   44840.7 us [15 compared, 10 fallbacks, 9 copies]  → 0.8x   (15589 allocations/run)
+N=1000  query B12 (0 kp): rank42     543.1 us [0 survivors, 0 copies]   xrank     430.6 us [2 compared, 0 fallbacks, 2 copies]  → 1.3x   (0 allocations/run)
+N=1000  aggregate over the three queries: rank42 378260.5 us  xrank 183756.9 us  → 2.1x
+route-only screen of 10,000 candidates: 100.9 us  (10.09 ns per candidate; 9117 route-rejected)
+
+$ node test/x-bench.mjs
+
+PAPH-X in WebAssembly (SIMD128 build) — X ABI 1, X3-PROVISIONAL, best of 5
+
+### Pair screen (ms per pair)
+
+| pair | screen 42 | xscreen | xscreen, baseline build | xscreen state |
+|---|---:|---:|---:|---|
+| scene × mirrored scene | 1.07 | **0.108** (10.0×) | 0.115 | Pass (FAST, pools 8/8) |
+| scene × unrelated scene | 1.16 | **0.032** (35.9×) | 0.032 | Pass (REJECT, pools 8/8) |
+| sprite × pasted into a host | 0.276 | **0.031** (9.0×) | 0.031 | Pass (REJECT, pools 8/6) |
+| work × 70% crop | 1.07 | **0.120** (9.0×) | 0.104 | Pass (FAST, pools 8/3) |
+| scene × 3× upscale | 1.01 | **0.089** (11.3×) | 0.083 | Pass (FAST, pools 8/8) |
+| scene × recoloured scene | 1.08 | **0.038** (28.7×) | 0.035 | Pass (FAST, pools 8/5) |
+| work × unrelated work | 0.984 | **0.109** (9.0×) | 0.105 | Pass (FAST, pools 8/5) |
+
+### Compare (ms per pair)
+
+| pair | comparator 42, lean | xcompare safe | xcompare fast | xcompare exact | verdict (42 / X safe, execution) |
+|---|---:|---:|---:|---:|---|
+| scene × mirrored scene | 2.84 | **0.414** (6.9×) | 0.395 (7.2×) | 2.68 | Copy / Copy, FAST |
+| scene × unrelated scene | 1.44 | **0.874** (1.6×) | 0.834 (1.7×) | 1.44 | Suspected / Suspected, FAST |
+| sprite × pasted into a host | 0.714 | **0.211** (3.4×) | 0.201 (3.5×) | 0.783 | Copy / Copy, FAST |
+| work × 70% crop | 2.02 | **3.99** (0.5×) | 1.99 (1.0×) | 2.11 | Copy / Copy, FALLBACK |
+| scene × 3× upscale | 4.07 | **0.535** (7.6×) | 0.540 (7.5×) | 4.10 | Copy / Copy, FAST |
+| scene × recoloured scene | 1.68 | **0.352** (4.8×) | 0.350 (4.8×) | 1.75 | Copy / Copy, FAST |
+| work × unrelated work | 2.85 | **0.783** (3.6×) | 0.734 (3.9×) | 2.99 | Copy / Copy, FAST |
+
+### Ranking (one query, 103 candidates, prepared sides)
+
+| call | ms per call | per candidate | copies found |
+|---|---:|---:|---|
+| rank, comparator 42, screen-gated | 105.9 | 1.03 | 100, 101, 102 |
+| xrank, safe (77 compared, 9 fallbacks) | **73.5** (1.4×) | 0.714 | 100, 101, 102 |
+| xrank, fast | 58.5 (1.8×) | 0.568 | |
+
+xrank over 2000 candidates (the same 103, repeated): 1081.3 ms, 540.7 µs per candidate, 497 route-rejected or unscreened
+
+### The specification's reference workload in WebAssembly: B09 (512 kp) vs 100 candidates of the 512-keypoint class (mean 362 kp)
+
+| call | ms per call | copies found |
+|---|---:|---|
+| rank, comparator 42, screen-gated (16 survivors) | 91.1 | 15 |
+| xrank, safe (37 compared, 2 fallbacks) | **27.8** (3.3×) | 15 |
+| xrank, fast | 24.9 (3.7×) | |
+
+### Unrelated same-style pairs of the specification's corpus (66 pairs, mean ms per pair)
+
+| | comparator 42 | PAPH-X |
+|---|---:|---:|
+| screen | 0.050 | **0.020** (2.5×) |
+| compare (lean / safe) | 0.399 | **0.216** (1.8×) |
+
+$ node test/x-bench.mjs --x2
+
+PAPH-X in WebAssembly (SIMD128 build) — X ABI 1, X2-PROVISIONAL, best of 5
+
+### Pair screen (ms per pair)
+
+| pair | screen 42 | xscreen | xscreen, baseline build | xscreen state |
+|---|---:|---:|---:|---|
+| scene × mirrored scene | 0.982 | **0.109** (9.0×) | 0.118 | Pass (FAST, pools 8/8) |
+| scene × unrelated scene | 0.969 | **0.026** (36.6×) | 0.027 | Pass (REJECT, pools 8/8) |
+| sprite × pasted into a host | 0.241 | **0.027** (8.9×) | 0.027 | Pass (REJECT, pools 8/6) |
+| work × 70% crop | 1.01 | **0.110** (9.1×) | 0.109 | Pass (FAST, pools 8/3) |
+| scene × 3× upscale | 1.00 | **0.084** (11.9×) | 0.089 | Pass (FAST, pools 8/8) |
+| scene × recoloured scene | 0.983 | **0.032** (30.5×) | 0.033 | Pass (FAST, pools 8/5) |
+| work × unrelated work | 1.03 | **0.117** (8.9×) | 0.110 | Pass (FAST, pools 8/5) |
+
+### Compare (ms per pair)
+
+| pair | comparator 42, lean | xcompare safe | xcompare fast | xcompare exact | verdict (42 / X safe, execution) |
+|---|---:|---:|---:|---:|---|
+| scene × mirrored scene | 2.69 | **0.362** (7.4×) | 0.320 (8.4×) | 2.61 | Copy / Copy, FAST |
+| scene × unrelated scene | 1.45 | **0.588** (2.5×) | 0.591 (2.5×) | 1.56 | Suspected / Suspected, FAST |
+| sprite × pasted into a host | 0.763 | **0.200** (3.8×) | 0.196 (3.9×) | 0.770 | Copy / Copy, FAST |
+| work × 70% crop | 2.10 | **3.80** (0.6×) | 1.95 (1.1×) | 2.05 | Copy / Copy, FALLBACK |
+| scene × 3× upscale | 3.74 | **0.479** (7.8×) | 0.477 (7.8×) | 3.75 | Copy / Copy, FAST |
+| scene × recoloured scene | 1.64 | **0.300** (5.5×) | 0.301 (5.5×) | 1.66 | Copy / Copy, FAST |
+| work × unrelated work | 2.69 | **0.676** (4.0×) | 0.674 (4.0×) | 2.69 | Copy / Copy, FAST |
+
+### Ranking (one query, 103 candidates, prepared sides)
+
+| call | ms per call | per candidate | copies found |
+|---|---:|---:|---|
+| rank, comparator 42, screen-gated | 101.3 | 0.984 | 100, 101, 102 |
+| xrank, safe (77 compared, 8 fallbacks) | **68.6** (1.5×) | 0.666 | 100, 101, 102 |
+| xrank, fast | 55.1 (1.8×) | 0.535 | |
+
+xrank over 2000 candidates (the same 103, repeated): 1089.1 ms, 544.6 µs per candidate, 497 route-rejected or unscreened
+
+### The specification's reference workload in WebAssembly: B09 (512 kp) vs 100 candidates of the 512-keypoint class (mean 362 kp)
+
+| call | ms per call | copies found |
+|---|---:|---|
+| rank, comparator 42, screen-gated (16 survivors) | 95.5 | 15 |
+| xrank, safe (37 compared, 2 fallbacks) | **30.5** (3.1×) | 15 |
+| xrank, fast | 25.9 (3.7×) | |
+
+### Unrelated same-style pairs of the specification's corpus (66 pairs, mean ms per pair)
+
+| | comparator 42 | PAPH-X |
+|---|---:|---:|
+| screen | 0.050 | **0.021** (2.4×) |
+| compare (lean / safe) | 0.392 | **0.221** (1.8×) |
+
+$ rust/bench.sh 1.2.0
+== 1.2.0
+hash work-512x384     34.597 ms best, 37.261 ms median (5x3)
+  wire 3         33.141 ms best, 34.460 ms median (5x3)
+hash scene-1024x768   113.335 ms best, 116.609 ms median (5x1)
+  wire 3         118.456 ms best, 121.237 ms median (5x1)
+hash scene            7.874 ms best, 8.472 ms median (5x5)
+  wire 3         8.200 ms best, 8.527 ms median (5x5)
+hash sprite           1.607 ms best, 1.631 ms median (5x20)
+  wire 3         1.736 ms best, 1.873 ms median (5x20)
+hash sprite-up4       2.085 ms best, 2.211 ms median (5x20)
+  wire 3         2.173 ms best, 2.212 ms median (5x20)
+hash banner           5.726 ms best, 5.909 ms median (5x5)
+  wire 3         6.242 ms best, 6.594 ms median (5x5)
+hash tile             3.755 ms best, 3.854 ms median (5x10)
+  wire 3         3.445 ms best, 3.732 ms median (5x10)
+cmp  work-512x384|work-512x384      2.527 ms best, 2.541 ms median (5x5)
+cmp  scene|scene-mirror             2.608 ms best, 2.692 ms median (5x10)
+cmp  sprite|sprite-pastecrop        0.863 ms best, 0.902 ms median (5x20)
+cmp  sprite|scene                   0.755 ms best, 0.794 ms median (5x20)
+cmp  banner|tile                    0.985 ms best, 0.999 ms median (5x20)
+scr  scene|scene-mirror             0.901 ms best, 0.939 ms median (5x20)
+
+$ node test/bench-engines.mjs
+
+### Hash (ms per image, best of 5)
+
+| image | JS reference | WASM 4.2.2 | WASM SIMD | WASM baseline | WASM SIMD, wire 3 |
+|---|---:|---:|---:|---:|---:|
+| sprite 96×96 | 10.4 | — | **1.40** (7.4×) | 1.47 | 1.29 |
+| scene 288×200 | 314.1 | — | **11.4** (27.5×) | 16.2 | 11.3 |
+| work 512×384 | 381.2 | — | **37.1** (10.3×) | 52.3 | 35.1 |
+| scene 1024×768 | 8955.5 | — | **170.7** (52.5×) | 295.6 | 169.5 |
+
+### Compare, comparator 42 (ms per pair, best of 5)
+
+| pair | JS reference | WASM SIMD, full report | WASM SIMD, lean | WASM baseline, full | verdict |
+|---|---:|---:|---:|---:|---|
+| scene × mirrored scene | 38.2 | **3.82** (10.0×) | 2.65 (14.4×) | 5.59 | Copy |
+| scene × unrelated scene | 26.9 | **2.07** (13.0×) | 1.77 (15.2×) | 3.17 | Suspected |
+| sprite × pasted into a host | 9.12 | **0.986** (9.2×) | 1.12 (8.1×) | 1.73 | Copy |
+| work × 70% crop | 26.8 | **2.48** (10.8×) | 2.05 (13.1×) | 3.53 | Copy |
+| scene × 3× upscale | 41.5 | **4.76** (8.7×) | 3.80 (10.9×) | 6.08 | Copy |
+
+### Ranking (one query, 103 candidates, prepared sides)
+
+| mode | ms per call | per candidate |
+|---|---:|---:|
+| screen-gated (49 of 103 pass the screen) | 100.2 | 0.973 |
+| every candidate compared | 123.5 | 1.20 |
+
+Copies found: 3 (candidates 100, 101, 102)
+
+$ sha256sum ../docs/calibration/X3-PROVISIONAL.pxcl ../docs/calibration/X2-PROVISIONAL.pxcl
+8af84dd0abb121920cc9aef94db93a84cb34b47061ec07b36622c91f12bbc88d  ../docs/calibration/X3-PROVISIONAL.pxcl
+27993afaaca76d1193e2550b5f1c9826ecb246e695de4dc8e6fc8d16d917acf5  ../docs/calibration/X2-PROVISIONAL.pxcl
+
+$ sibench dump --base 29 --tf base     # the pair the copy-scope fix is about: base 29 of the synthetic corpus, and pasted into its host
+target/dump/29-base.t1 (3952 B, wire 4), target/dump/29-base.t2 (17512 B)
+$ sibench dump --base 29 --tf paste
+target/dump/29-paste.t1 (3952 B, wire 4), target/dump/29-paste.t2 (20512 B)
+$ xcli compare target/dump/29-base.t1 target/dump/29-base.t2 target/dump/29-paste.t1 target/dump/29-paste.t2 9     # fast policy, copy scope
+{"comparator":50,"verdict":"Indeterminate","class":"","basis":[],"reasons":["FALLBACK_REQUIRED"],"execution":"DEFERRED","reason":"control-saturated","route":{"local":8,"band":1,"global":136,"measurable":7,"class":"FAST"},"sparse":{"directPool":68,"mirrorPool":6,"touchedPairs":14587,"hammingPairs":12696,"fullPairs":447488,"rowsScanned":437,"denseRows":0,"explosion":false},"geometry":{"anchors":96,"expandedTo":437,"inliers":48,"weakInliers":0,"models":[{"r00":31969,"r10":72,"tx":1012,"ty":179,"scaleQ16":31969,"mirror":false,"inliers":48,"medianErr":45,"confSum":120670}],"measurable":true,"raw":10000,"ctl":10000,"ctlMember":"gn:third","ctlRan":true,"margin":0,"evidence":0,"diversity":{"spatial":1250,"scale":5000,"model":2500,"descriptor":9583,"combined":3687,"multiplier":9687},"coverage":{"g":4,"occupied":2,"coverage":1250,"bboxCells":2,"concentration":10000,"counts":[0,26,22,0,0,0,0,0,0,0,0,0,0,0,0,0]},"topology":2,"certificate":false,"uniqueA":48,"uniqueB":48},"structural":{"lo":563,"hi":3085,"exact":false,"channels":{"dct":{"value":526,"measurable":true,"known":true},"local":{"value":0,"measurable":true,"known":false},"shape":{"value":1551,"measurable":true,"known":true},"topology":{"value":240,"measurable":true,"known":true},"runs":{"value":844,"measurable":true,"known":true},"palette":{"value":62,"measurable":true,"known":true},"silhouette":{"value":0,"measurable":false,"known":true}},"localEvidence":null,"localMatches":null,"diversity":3180,"coverageMin":null,"certifiable":false},"swapped":false,"selection":{"mixed":false},"kpA":437,"kpB":512,"fallback":null,"calibration":"CAL-007-PROVISIO","calibrationId":"741afad9252f2ccb","xcalibration":"X3-PROVISIONAL","xcalibrationId":"8af84dd0abb12192"}
+$ xcli compare target/dump/29-base.t1 target/dump/29-base.t2 target/dump/29-paste.t1 target/dump/29-paste.t2 10     # safe policy, copy scope
+{"comparator":50,"verdict":"Copy","class":"geometric only — crop / collage class","basis":["geometric"],"reasons":[],"execution":"FALLBACK","reason":"control-saturated","route":{"local":8,"band":1,"global":136,"measurable":7,"class":"FAST"},"sparse":{"directPool":68,"mirrorPool":6,"touchedPairs":14587,"hammingPairs":12696,"fullPairs":447488,"rowsScanned":437,"denseRows":0,"explosion":false},"geometry":{"anchors":96,"expandedTo":437,"inliers":48,"weakInliers":0,"models":[{"r00":31969,"r10":72,"tx":1012,"ty":179,"scaleQ16":31969,"mirror":false,"inliers":48,"medianErr":45,"confSum":120670}],"measurable":true,"raw":10000,"ctl":10000,"ctlMember":"gn:third","ctlRan":true,"margin":0,"evidence":0,"diversity":{"spatial":1250,"scale":5000,"model":2500,"descriptor":9583,"combined":3687,"multiplier":9687},"coverage":{"g":4,"occupied":2,"coverage":1250,"bboxCells":2,"concentration":10000,"counts":[0,26,22,0,0,0,0,0,0,0,0,0,0,0,0,0]},"topology":2,"certificate":false,"uniqueA":48,"uniqueB":48},"structural":{"lo":1900,"hi":1900,"exact":true,"channels":{"dct":{"value":526,"measurable":true,"known":true},"local":{"value":0,"measurable":true,"known":false},"shape":{"value":1551,"measurable":true,"known":true},"topology":{"value":240,"measurable":true,"known":true},"runs":{"value":844,"measurable":true,"known":true},"palette":{"value":62,"measurable":true,"known":true},"silhouette":{"value":0,"measurable":false,"known":true}},"localEvidence":null,"localMatches":null,"diversity":3180,"coverageMin":null,"certifiable":true},"swapped":false,"selection":{"mixed":false},"kpA":437,"kpB":512,"fallback":{"comparator":42,"verdict":"Copy","class":"geometric only — crop / collage class","basis":["geometric"],"reasons":[],"structural":1900,"certifiable":true,"v3":null,"local":{"measurable":true,"note":"51 of 128 regions assigned, 0 expected under rot16","pairs":[[1,7],[3,16],[4,17],[5,19],[6,5],[7,51],[8,25],[9,20],[10,22],[11,15],[12,23],[13,24],[14,29],[15,44],[16,43],[19,54],[24,38],[25,37],[26,48],[27,33],[30,35],[31,27],[33,18],[35,39],[36,40],[37,36],[39,34],[41,55],[42,26],[44,30],[45,76],[48,49],[49,53],[50,59],[54,47],[56,64],[60,52],[65,58],[73,41],[75,6],[77,66],[80,67],[87,95],[88,96],[89,98],[90,99],[91,100],[97,104],[104,110],[111,105],[113,57]],"matches":51,"cmax":128,"w":50606,"cap":407148,"ctlW":0,"ctlN":0,"ctlMember":"rot16","liftRaw":8349,"liftCtl":0,"margin":8349,"evidence":3820,"propRaw":1242,"propCtl":0,"propMargin":1242,"diversity":3180,"dA":3180,"dB":6518,"coverageA":{"g":4,"occupied":4,"coverage":2500,"bboxCells":4,"concentration":10000,"counts":[14,17,13,7,0,0,0,0,0,0,0,0,0,0,0,0]},"coverageB":{"g":4,"occupied":2,"coverage":1250,"bboxCells":2,"concentration":10000,"counts":[0,34,17,0,0,0,0,0,0,0,0,0,0,0,0,0]}},"models":[{"r00":32048,"r10":-121,"tx":1009,"ty":181,"scaleQ16":32048,"mirror":false,"inliers":47,"medianErr":13,"confSum":119934}],"topology":2,"totalInliers":47,"coverage":{"g":4,"occupied":2,"coverage":1250,"bboxCells":2,"concentration":10000,"counts":[0,25,22,0,0,0,0,0,0,0,0,0,0,0,0,0]},"geometryEvidence":9686,"geoMeasurable":true,"geoRaw":10000,"geoCtl":6250,"geoMargin":10000,"geoCtlMember":"gn:twothirds","swapped":false,"calibration":"CAL-007-PROVISIO","calibrationId":"741afad9252f2ccb","geoWeakInliers":0,"diversity":{"spatial":1250,"scale":5000,"model":2500,"descriptor":9574,"combined":3686,"multiplier":9686},"medianErr":[13],"selection":{"a":1,"b":1,"mixed":false},"kpA":437,"kpB":512,"screen":null},"calibration":"CAL-007-PROVISIO","calibrationId":"741afad9252f2ccb","xcalibration":"X3-PROVISIONAL","xcalibrationId":"8af84dd0abb12192"}
+$ xcli compare target/dump/29-paste.t1 target/dump/29-paste.t2 target/dump/29-base.t1 target/dump/29-base.t2 9     # fast policy, copy scope
+{"comparator":50,"verdict":"Indeterminate","class":"","basis":[],"reasons":["FALLBACK_REQUIRED"],"execution":"DEFERRED","reason":"control-saturated","route":{"local":8,"band":1,"global":136,"measurable":7,"class":"FAST"},"sparse":{"directPool":68,"mirrorPool":6,"touchedPairs":14587,"hammingPairs":12696,"fullPairs":447488,"rowsScanned":437,"denseRows":0,"explosion":false},"geometry":{"anchors":96,"expandedTo":437,"inliers":48,"weakInliers":0,"models":[{"r00":31969,"r10":72,"tx":1012,"ty":179,"scaleQ16":31969,"mirror":false,"inliers":48,"medianErr":45,"confSum":120670}],"measurable":true,"raw":10000,"ctl":10000,"ctlMember":"gn:third","ctlRan":true,"margin":0,"evidence":0,"diversity":{"spatial":1250,"scale":5000,"model":2500,"descriptor":9583,"combined":3687,"multiplier":9687},"coverage":{"g":4,"occupied":2,"coverage":1250,"bboxCells":2,"concentration":10000,"counts":[0,26,22,0,0,0,0,0,0,0,0,0,0,0,0,0]},"topology":2,"certificate":false,"uniqueA":48,"uniqueB":48},"structural":{"lo":563,"hi":3085,"exact":false,"channels":{"dct":{"value":526,"measurable":true,"known":true},"local":{"value":0,"measurable":true,"known":false},"shape":{"value":1551,"measurable":true,"known":true},"topology":{"value":240,"measurable":true,"known":true},"runs":{"value":844,"measurable":true,"known":true},"palette":{"value":62,"measurable":true,"known":true},"silhouette":{"value":0,"measurable":false,"known":true}},"localEvidence":null,"localMatches":null,"diversity":3180,"coverageMin":null,"certifiable":false},"swapped":true,"selection":{"mixed":false},"kpA":512,"kpB":437,"fallback":null,"calibration":"CAL-007-PROVISIO","calibrationId":"741afad9252f2ccb","xcalibration":"X3-PROVISIONAL","xcalibrationId":"8af84dd0abb12192"}
+$ xcli compare target/dump/29-paste.t1 target/dump/29-paste.t2 target/dump/29-base.t1 target/dump/29-base.t2 10     # safe policy, copy scope
+{"comparator":50,"verdict":"Copy","class":"geometric only — crop / collage class","basis":["geometric"],"reasons":[],"execution":"FALLBACK","reason":"control-saturated","route":{"local":8,"band":1,"global":136,"measurable":7,"class":"FAST"},"sparse":{"directPool":68,"mirrorPool":6,"touchedPairs":14587,"hammingPairs":12696,"fullPairs":447488,"rowsScanned":437,"denseRows":0,"explosion":false},"geometry":{"anchors":96,"expandedTo":437,"inliers":48,"weakInliers":0,"models":[{"r00":31969,"r10":72,"tx":1012,"ty":179,"scaleQ16":31969,"mirror":false,"inliers":48,"medianErr":45,"confSum":120670}],"measurable":true,"raw":10000,"ctl":10000,"ctlMember":"gn:third","ctlRan":true,"margin":0,"evidence":0,"diversity":{"spatial":1250,"scale":5000,"model":2500,"descriptor":9583,"combined":3687,"multiplier":9687},"coverage":{"g":4,"occupied":2,"coverage":1250,"bboxCells":2,"concentration":10000,"counts":[0,26,22,0,0,0,0,0,0,0,0,0,0,0,0,0]},"topology":2,"certificate":false,"uniqueA":48,"uniqueB":48},"structural":{"lo":1900,"hi":1900,"exact":true,"channels":{"dct":{"value":526,"measurable":true,"known":true},"local":{"value":0,"measurable":true,"known":false},"shape":{"value":1551,"measurable":true,"known":true},"topology":{"value":240,"measurable":true,"known":true},"runs":{"value":844,"measurable":true,"known":true},"palette":{"value":62,"measurable":true,"known":true},"silhouette":{"value":0,"measurable":false,"known":true}},"localEvidence":null,"localMatches":null,"diversity":3180,"coverageMin":null,"certifiable":true},"swapped":true,"selection":{"mixed":false},"kpA":512,"kpB":437,"fallback":{"comparator":42,"verdict":"Copy","class":"geometric only — crop / collage class","basis":["geometric"],"reasons":[],"structural":1900,"certifiable":true,"v3":null,"local":{"measurable":true,"note":"51 of 128 regions assigned, 0 expected under rot16","pairs":[[7,1],[16,3],[17,4],[19,5],[5,6],[51,7],[25,8],[20,9],[22,10],[15,11],[23,12],[24,13],[29,14],[44,15],[43,16],[54,19],[38,24],[37,25],[48,26],[33,27],[35,30],[27,31],[18,33],[39,35],[40,36],[36,37],[34,39],[55,41],[26,42],[30,44],[76,45],[49,48],[53,49],[59,50],[47,54],[64,56],[52,60],[58,65],[41,73],[6,75],[66,77],[67,80],[95,87],[96,88],[98,89],[99,90],[100,91],[104,97],[110,104],[105,111],[57,113]],"matches":51,"cmax":128,"w":50606,"cap":407148,"ctlW":0,"ctlN":0,"ctlMember":"rot16","liftRaw":8349,"liftCtl":0,"margin":8349,"evidence":3820,"propRaw":1242,"propCtl":0,"propMargin":1242,"diversity":3180,"dA":6518,"dB":3180,"coverageA":{"g":4,"occupied":2,"coverage":1250,"bboxCells":2,"concentration":10000,"counts":[0,34,17,0,0,0,0,0,0,0,0,0,0,0,0,0]},"coverageB":{"g":4,"occupied":4,"coverage":2500,"bboxCells":4,"concentration":10000,"counts":[14,17,13,7,0,0,0,0,0,0,0,0,0,0,0,0]}},"models":[{"r00":32048,"r10":-121,"tx":1009,"ty":181,"scaleQ16":32048,"mirror":false,"inliers":47,"medianErr":13,"confSum":119934}],"topology":2,"totalInliers":47,"coverage":{"g":4,"occupied":2,"coverage":1250,"bboxCells":2,"concentration":10000,"counts":[0,25,22,0,0,0,0,0,0,0,0,0,0,0,0,0]},"geometryEvidence":9686,"geoMeasurable":true,"geoRaw":10000,"geoCtl":6250,"geoMargin":10000,"geoCtlMember":"gn:twothirds","swapped":true,"calibration":"CAL-007-PROVISIO","calibrationId":"741afad9252f2ccb","geoWeakInliers":0,"diversity":{"spatial":1250,"scale":5000,"model":2500,"descriptor":9574,"combined":3686,"multiplier":9686},"medianErr":[13],"selection":{"a":1,"b":1,"mixed":false},"kpA":512,"kpB":437,"screen":null},"calibration":"CAL-007-PROVISIO","calibrationId":"741afad9252f2ccb","xcalibration":"X3-PROVISIONAL","xcalibrationId":"8af84dd0abb12192"}
+$ xcli compare target/dump/29-base.t1 target/dump/29-base.t2 target/dump/29-paste.t1 target/dump/29-paste.t2 9 --x2     # fast policy, copy scope
+{"comparator":50,"verdict":"Indeterminate","class":"","basis":[],"reasons":["FALLBACK_REQUIRED"],"execution":"DEFERRED","reason":"control-saturated","route":{"local":8,"band":1,"global":136,"measurable":7,"class":"FAST"},"sparse":{"directPool":68,"mirrorPool":6,"touchedPairs":14587,"hammingPairs":12696,"fullPairs":447488,"rowsScanned":437,"denseRows":0,"explosion":false},"geometry":{"anchors":96,"expandedTo":437,"inliers":48,"weakInliers":0,"models":[{"r00":31969,"r10":72,"tx":1012,"ty":179,"scaleQ16":31969,"mirror":false,"inliers":48,"medianErr":45,"confSum":120670}],"measurable":true,"raw":10000,"ctl":10000,"ctlMember":"gn:third","ctlRan":true,"margin":0,"evidence":0,"diversity":{"spatial":1250,"scale":5000,"model":2500,"descriptor":9583,"combined":3687,"multiplier":9687},"coverage":{"g":4,"occupied":2,"coverage":1250,"bboxCells":2,"concentration":10000,"counts":[0,26,22,0,0,0,0,0,0,0,0,0,0,0,0,0]},"topology":2,"certificate":false,"uniqueA":48,"uniqueB":48},"structural":{"lo":1900,"hi":1900,"exact":true,"channels":{"dct":{"value":526,"measurable":true,"known":true},"local":{"value":3820,"measurable":true,"known":true},"shape":{"value":1551,"measurable":true,"known":true},"topology":{"value":240,"measurable":true,"known":true},"runs":{"value":844,"measurable":true,"known":true},"palette":{"value":62,"measurable":true,"known":true},"silhouette":{"value":0,"measurable":false,"known":true}},"localEvidence":3820,"localMatches":51,"diversity":3180,"coverageMin":1250,"certifiable":true},"swapped":false,"selection":{"mixed":false},"kpA":437,"kpB":512,"fallback":null,"calibration":"CAL-004-PROPOSED","calibrationId":"91b545f801f5a095","xcalibration":"X2-PROVISIONAL","xcalibrationId":"27993afaaca76d11"}
+$ xcli compare target/dump/29-base.t1 target/dump/29-base.t2 target/dump/29-paste.t1 target/dump/29-paste.t2 10 --x2     # safe policy, copy scope
+{"comparator":50,"verdict":"Copy","class":"geometric only — crop / collage class","basis":["geometric"],"reasons":[],"execution":"FALLBACK","reason":"control-saturated","route":{"local":8,"band":1,"global":136,"measurable":7,"class":"FAST"},"sparse":{"directPool":68,"mirrorPool":6,"touchedPairs":14587,"hammingPairs":12696,"fullPairs":447488,"rowsScanned":437,"denseRows":0,"explosion":false},"geometry":{"anchors":96,"expandedTo":437,"inliers":48,"weakInliers":0,"models":[{"r00":31969,"r10":72,"tx":1012,"ty":179,"scaleQ16":31969,"mirror":false,"inliers":48,"medianErr":45,"confSum":120670}],"measurable":true,"raw":10000,"ctl":10000,"ctlMember":"gn:third","ctlRan":true,"margin":0,"evidence":0,"diversity":{"spatial":1250,"scale":5000,"model":2500,"descriptor":9583,"combined":3687,"multiplier":9687},"coverage":{"g":4,"occupied":2,"coverage":1250,"bboxCells":2,"concentration":10000,"counts":[0,26,22,0,0,0,0,0,0,0,0,0,0,0,0,0]},"topology":2,"certificate":false,"uniqueA":48,"uniqueB":48},"structural":{"lo":1900,"hi":1900,"exact":true,"channels":{"dct":{"value":526,"measurable":true,"known":true},"local":{"value":3820,"measurable":true,"known":true},"shape":{"value":1551,"measurable":true,"known":true},"topology":{"value":240,"measurable":true,"known":true},"runs":{"value":844,"measurable":true,"known":true},"palette":{"value":62,"measurable":true,"known":true},"silhouette":{"value":0,"measurable":false,"known":true}},"localEvidence":3820,"localMatches":51,"diversity":3180,"coverageMin":1250,"certifiable":true},"swapped":false,"selection":{"mixed":false},"kpA":437,"kpB":512,"fallback":{"comparator":42,"verdict":"Copy","class":"geometric only — crop / collage class","basis":["geometric"],"reasons":[],"structural":1900,"certifiable":true,"v3":null,"local":{"measurable":true,"note":"51 of 128 regions assigned, 0 expected under rot16","pairs":[[1,7],[3,16],[4,17],[5,19],[6,5],[7,51],[8,25],[9,20],[10,22],[11,15],[12,23],[13,24],[14,29],[15,44],[16,43],[19,54],[24,38],[25,37],[26,48],[27,33],[30,35],[31,27],[33,18],[35,39],[36,40],[37,36],[39,34],[41,55],[42,26],[44,30],[45,76],[48,49],[49,53],[50,59],[54,47],[56,64],[60,52],[65,58],[73,41],[75,6],[77,66],[80,67],[87,95],[88,96],[89,98],[90,99],[91,100],[97,104],[104,110],[111,105],[113,57]],"matches":51,"cmax":128,"w":50606,"cap":407148,"ctlW":0,"ctlN":0,"ctlMember":"rot16","liftRaw":8349,"liftCtl":0,"margin":8349,"evidence":3820,"propRaw":1242,"propCtl":0,"propMargin":1242,"diversity":3180,"dA":3180,"dB":6518,"coverageA":{"g":4,"occupied":4,"coverage":2500,"bboxCells":4,"concentration":10000,"counts":[14,17,13,7,0,0,0,0,0,0,0,0,0,0,0,0]},"coverageB":{"g":4,"occupied":2,"coverage":1250,"bboxCells":2,"concentration":10000,"counts":[0,34,17,0,0,0,0,0,0,0,0,0,0,0,0,0]}},"models":[{"r00":32048,"r10":-121,"tx":1009,"ty":181,"scaleQ16":32048,"mirror":false,"inliers":47,"medianErr":13,"confSum":119934}],"topology":2,"totalInliers":47,"coverage":{"g":4,"occupied":2,"coverage":1250,"bboxCells":2,"concentration":10000,"counts":[0,25,22,0,0,0,0,0,0,0,0,0,0,0,0,0]},"geometryEvidence":9686,"geoMeasurable":true,"geoRaw":10000,"geoCtl":6250,"geoMargin":10000,"geoCtlMember":"gn:twothirds","swapped":false,"calibration":"CAL-004-PROPOSED","calibrationId":"91b545f801f5a095","geoWeakInliers":0,"diversity":{"spatial":1250,"scale":5000,"model":2500,"descriptor":9574,"combined":3686,"multiplier":9686},"medianErr":[13],"selection":{"a":1,"b":1,"mixed":false},"kpA":437,"kpB":512,"screen":null},"calibration":"CAL-004-PROPOSED","calibrationId":"91b545f801f5a095","xcalibration":"X2-PROVISIONAL","xcalibrationId":"27993afaaca76d11"}
+$ xcli compare target/dump/29-paste.t1 target/dump/29-paste.t2 target/dump/29-base.t1 target/dump/29-base.t2 9 --x2     # fast policy, copy scope
+{"comparator":50,"verdict":"Indeterminate","class":"","basis":[],"reasons":["FALLBACK_REQUIRED"],"execution":"DEFERRED","reason":"control-saturated","route":{"local":8,"band":1,"global":136,"measurable":7,"class":"FAST"},"sparse":{"directPool":68,"mirrorPool":6,"touchedPairs":14587,"hammingPairs":12696,"fullPairs":447488,"rowsScanned":437,"denseRows":0,"explosion":false},"geometry":{"anchors":96,"expandedTo":437,"inliers":48,"weakInliers":0,"models":[{"r00":31969,"r10":72,"tx":1012,"ty":179,"scaleQ16":31969,"mirror":false,"inliers":48,"medianErr":45,"confSum":120670}],"measurable":true,"raw":10000,"ctl":10000,"ctlMember":"gn:third","ctlRan":true,"margin":0,"evidence":0,"diversity":{"spatial":1250,"scale":5000,"model":2500,"descriptor":9583,"combined":3687,"multiplier":9687},"coverage":{"g":4,"occupied":2,"coverage":1250,"bboxCells":2,"concentration":10000,"counts":[0,26,22,0,0,0,0,0,0,0,0,0,0,0,0,0]},"topology":2,"certificate":false,"uniqueA":48,"uniqueB":48},"structural":{"lo":1900,"hi":1900,"exact":true,"channels":{"dct":{"value":526,"measurable":true,"known":true},"local":{"value":3820,"measurable":true,"known":true},"shape":{"value":1551,"measurable":true,"known":true},"topology":{"value":240,"measurable":true,"known":true},"runs":{"value":844,"measurable":true,"known":true},"palette":{"value":62,"measurable":true,"known":true},"silhouette":{"value":0,"measurable":false,"known":true}},"localEvidence":3820,"localMatches":51,"diversity":3180,"coverageMin":1250,"certifiable":true},"swapped":true,"selection":{"mixed":false},"kpA":512,"kpB":437,"fallback":null,"calibration":"CAL-004-PROPOSED","calibrationId":"91b545f801f5a095","xcalibration":"X2-PROVISIONAL","xcalibrationId":"27993afaaca76d11"}
+$ xcli compare target/dump/29-paste.t1 target/dump/29-paste.t2 target/dump/29-base.t1 target/dump/29-base.t2 10 --x2     # safe policy, copy scope
+{"comparator":50,"verdict":"Copy","class":"geometric only — crop / collage class","basis":["geometric"],"reasons":[],"execution":"FALLBACK","reason":"control-saturated","route":{"local":8,"band":1,"global":136,"measurable":7,"class":"FAST"},"sparse":{"directPool":68,"mirrorPool":6,"touchedPairs":14587,"hammingPairs":12696,"fullPairs":447488,"rowsScanned":437,"denseRows":0,"explosion":false},"geometry":{"anchors":96,"expandedTo":437,"inliers":48,"weakInliers":0,"models":[{"r00":31969,"r10":72,"tx":1012,"ty":179,"scaleQ16":31969,"mirror":false,"inliers":48,"medianErr":45,"confSum":120670}],"measurable":true,"raw":10000,"ctl":10000,"ctlMember":"gn:third","ctlRan":true,"margin":0,"evidence":0,"diversity":{"spatial":1250,"scale":5000,"model":2500,"descriptor":9583,"combined":3687,"multiplier":9687},"coverage":{"g":4,"occupied":2,"coverage":1250,"bboxCells":2,"concentration":10000,"counts":[0,26,22,0,0,0,0,0,0,0,0,0,0,0,0,0]},"topology":2,"certificate":false,"uniqueA":48,"uniqueB":48},"structural":{"lo":1900,"hi":1900,"exact":true,"channels":{"dct":{"value":526,"measurable":true,"known":true},"local":{"value":3820,"measurable":true,"known":true},"shape":{"value":1551,"measurable":true,"known":true},"topology":{"value":240,"measurable":true,"known":true},"runs":{"value":844,"measurable":true,"known":true},"palette":{"value":62,"measurable":true,"known":true},"silhouette":{"value":0,"measurable":false,"known":true}},"localEvidence":3820,"localMatches":51,"diversity":3180,"coverageMin":1250,"certifiable":true},"swapped":true,"selection":{"mixed":false},"kpA":512,"kpB":437,"fallback":{"comparator":42,"verdict":"Copy","class":"geometric only — crop / collage class","basis":["geometric"],"reasons":[],"structural":1900,"certifiable":true,"v3":null,"local":{"measurable":true,"note":"51 of 128 regions assigned, 0 expected under rot16","pairs":[[7,1],[16,3],[17,4],[19,5],[5,6],[51,7],[25,8],[20,9],[22,10],[15,11],[23,12],[24,13],[29,14],[44,15],[43,16],[54,19],[38,24],[37,25],[48,26],[33,27],[35,30],[27,31],[18,33],[39,35],[40,36],[36,37],[34,39],[55,41],[26,42],[30,44],[76,45],[49,48],[53,49],[59,50],[47,54],[64,56],[52,60],[58,65],[41,73],[6,75],[66,77],[67,80],[95,87],[96,88],[98,89],[99,90],[100,91],[104,97],[110,104],[105,111],[57,113]],"matches":51,"cmax":128,"w":50606,"cap":407148,"ctlW":0,"ctlN":0,"ctlMember":"rot16","liftRaw":8349,"liftCtl":0,"margin":8349,"evidence":3820,"propRaw":1242,"propCtl":0,"propMargin":1242,"diversity":3180,"dA":6518,"dB":3180,"coverageA":{"g":4,"occupied":2,"coverage":1250,"bboxCells":2,"concentration":10000,"counts":[0,34,17,0,0,0,0,0,0,0,0,0,0,0,0,0]},"coverageB":{"g":4,"occupied":4,"coverage":2500,"bboxCells":4,"concentration":10000,"counts":[14,17,13,7,0,0,0,0,0,0,0,0,0,0,0,0]}},"models":[{"r00":32048,"r10":-121,"tx":1009,"ty":181,"scaleQ16":32048,"mirror":false,"inliers":47,"medianErr":13,"confSum":119934}],"topology":2,"totalInliers":47,"coverage":{"g":4,"occupied":2,"coverage":1250,"bboxCells":2,"concentration":10000,"counts":[0,25,22,0,0,0,0,0,0,0,0,0,0,0,0,0]},"geometryEvidence":9686,"geoMeasurable":true,"geoRaw":10000,"geoCtl":6250,"geoMargin":10000,"geoCtlMember":"gn:twothirds","swapped":true,"calibration":"CAL-004-PROPOSED","calibrationId":"91b545f801f5a095","geoWeakInliers":0,"diversity":{"spatial":1250,"scale":5000,"model":2500,"descriptor":9574,"combined":3686,"multiplier":9686},"medianErr":[13],"selection":{"a":1,"b":1,"mixed":false},"kpA":512,"kpB":437,"screen":null},"calibration":"CAL-004-PROPOSED","calibrationId":"91b545f801f5a095","xcalibration":"X2-PROVISIONAL","xcalibrationId":"27993afaaca76d11"}
+
+$ node tools/silhouette-ties.cjs     # from the repository root: the ties the silhouette's component choice can meet (SPEC-W4 §6)
+| cells | free polyominoes | groups tied through the profile (shapes) | of them tied through the moments | through the occupancy |
+|---:|---:|---:|---:|---:|
+| 1 | 1 | 0 (0) | 0 | 0 |
+| 2 | 1 | 0 (0) | 0 | 0 |
+| 3 | 2 | 0 (0) | 0 | 0 |
+| 4 | 5 | 0 (0) | 0 | 0 |
+| 5 | 12 | 0 (0) | 0 | 0 |
+| 6 | 35 | 0 (0) | 0 | 0 |
+| 7 | 108 | 0 (0) | 0 | 0 |
+| 8 | 369 | 0 (0) | 0 | 0 |
+| 9 | 1285 | 0 (0) | 0 | 0 |
+| 10 | 4655 | 4 (8) | 0 | 0 |
+| 11 | 17073 | 36 (72) | 0 | 0 |
+| 12 | 63600 | 219 (446) | 0 | 0 |
+| 13 | 238591 | 1528 (3150) | 1 | 0 |
+
+settled by the occupancy (13 cells): [[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[1,1],[2,1],[6,1],[1,2],[6,2],[0,3],[1,3]]  [[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[0,1],[2,1],[5,1],[0,2],[5,2],[5,3],[6,3]]
+
+$ cargo test --release -- --nocapture        # the lines that print a result
+CAL-001-PROVISIONAL id: 30d061eae148b18b (174 bytes)
+CAL-007-PROVISIONAL id 741afad9252f2ccb4ef6f691725b740d1b100a92858b71346910aed457eee899 (320 bytes)
+silhouette ties: 5 pairs settled by keys [3, 3, 3, 3, 4] (3 the moments, 4 the occupancy), exact under all seven symmetries; twins by the scan order, the record equal up to orientation under 4 of seven
+wire 3: some section moved on 493 of 532 D4 copies; G0 moved on 388, G3 on 205
+wire 4: thumbnail, DCT, shapes, silhouette and the route's four words equivariant on all 532 D4 copies (16 of them keep a region tied with its own rotated twin, the records equal up to that orientation)
+X2-PROVISIONAL id 27993afaaca76d1193e2550b5f1c9826ecb246e695de4dc8e6fc8d16d917acf5 (332 bytes)
+X3-PROVISIONAL id 8af84dd0abb121920cc9aef94db93a84cb34b47061ec07b36622c91f12bbc88d (332 bytes)
+X1-PROVISIONAL id b96040d888b21e28d8d94b0e9be6b3a48aca05be1743a6c1d6f6bd95aaf6cbd4 (330 bytes)
+derivation 2: G1 and G2 equal on 48 of 48 D4 copies, G3 on 48 (derivation 1: 48); derivation 1's G1 moved on 18
+SI2-PROVISIONAL: copies 30/30, unrelated 0/90
+SI4-PROVISIONAL: copies 30/30, unrelated 20/90
+SI1-PROVISIONAL id ca0ff1047b03cadd7a974ac652ca3bc73618b0f6660f5cd13411398fa3484d3e (5334 bytes)
+SI2-PROVISIONAL id abfef6f814c4915bcb7df273330cbd01c1fa9f90bf24b30bf8034f0a473074b6
+SI3-PROVISIONAL id dfe99f33b6a8dfc029471fc4c4e8d5f61c126d4cbc069d1cbacc43b43f49c270
+SI4-PROVISIONAL id aa8ce6d311f4ce56e4636d7b0a30d892877d76ca0821d9563656c58b75cb033d
+test result: ok. 126 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.48s

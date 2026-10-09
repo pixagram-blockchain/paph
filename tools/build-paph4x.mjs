@@ -32,7 +32,7 @@ const body = read(src, 'body.html');           // the nine sections
 const app = read(src, 'bench.js');             // the bench application
 
 const engines = [
-  ['wire — the PAPH fingerprint (SPEC-003); 4.2 raised the tier-2 budget to 512, not the format', read(root, 'src', 'wire.cjs')],
+  ['wire — the PAPH fingerprint (SPEC-003; format 4 from 1.2, SPEC-W4); 4.2 raised the tier-2 budget to 512, not the format', read(root, 'src', 'wire.cjs')],
   ['paph-js — comparator 42 (SPEC-004.2) on the entry, 41 frozen beside it', read(root, 'src', 'paph-js.cjs')],
   ['cal-core — the calibration loop the bench shares with the suites', read(root, 'demo', 'cal-core.cjs')]
 ];

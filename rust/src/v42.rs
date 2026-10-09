@@ -208,6 +208,10 @@ pub fn compare_v42_reading(
     if a.t2_error.is_some() || b.t2_error.is_some() {
         return refuse(R_CORRUPT, profile);
     }
+    // a wire-3 and a wire-4 side: refused, never compared across formats
+    if a.t1.version != b.t1.version {
+        return refuse(crate::wire::R_WIRE_MISMATCH, profile);
+    }
     let cfg = bind(cfg, profile);
 
     // P4 — canonical argument order, the rule verbatim from 4 and 4.1; the v3

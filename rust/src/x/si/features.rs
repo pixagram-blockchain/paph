@@ -21,14 +21,21 @@
 //! | SIL   | silhouette of the largest opaque component (works with transparency) | D4, recolours, rescales | crops |
 //! | KPGEO | keypoint spread, anisotropy, pyramid levels, folded orientations, count | D4, the complement | recolours, crops |
 //!
-//! Not used, measured (SPEC-SI §3.3): the DCT section (the 16x16 thumbnail's
-//! cell edges commute with D4 only when both sides are multiples of 16, and
-//! its median-split magnitude bits flip broadly under a one-pixel shift of
-//! the cell grid — the same reason XRoute's G0 word is weaker than its
-//! construction suggests), the diagonal run histogram (a mirror sends the
-//! main diagonal to the anti-diagonal, which the wire does not hold).  Not
-//! used, by rule: the colour section (SPEC-003 §6.5: reporting only; a
+//! Not used, measured (SPEC-SI §3.3): the DCT section (its median-split
+//! magnitude bits flip broadly under a one-pixel shift of the cell grid; on
+//! wire 3 the 16x16 thumbnail's cell edges also commute with D4 only when
+//! both sides are multiples of 16 — the same reason XRoute's G0 word was
+//! weaker than its construction suggests.  Wire 4 makes the section exactly
+//! equivariant, but a crop or a rescale still shifts the grid, and SI4 was
+//! fit on the same six families), the diagonal run histogram (a mirror sends
+//! the main diagonal to the anti-diagonal, which the wire does not hold).
+//! Not used, by rule: the colour section (SPEC-003 §6.5: reporting only; a
 //! routing key built on hue sends every recoloured copy to the wrong cell).
+//!
+//! On wire 4 the SHAPE and SIL families read exact box dimensions where
+//! wire 3 stored a rounded ratio (`Tier1::shape_asym_q8`,
+//! `silhouette_asym_q8`), and every section they read permutes exactly under
+//! the square's symmetries.
 //!
 //! Integer arithmetic only: two nodes indexing the same wires must derive the
 //! same cells.
@@ -152,9 +159,9 @@ fn iso_class(area: i64, per: i64) -> i32 {
     [512i64, 1024, 2048, 4096, 8192, 16384, 32768].iter().filter(|&&x| iso >= x).count() as i32
 }
 
-fn aspect_class(aspect: i64) -> i32 {
-    let a = if aspect > 0 { aspect.max(65536 / aspect) } else { 256 };
-    [320i64, 410, 512, 768, 1280, 2048, 4096].iter().filter(|&&x| a >= x).count() as i32
+/// The class of a box's elongation (`Tier1::shape_asym_q8`: exact on wire 4).
+fn aspect_class(asym_q8: i64) -> i32 {
+    [320i64, 410, 512, 768, 1280, 2048, 4096].iter().filter(|&&x| asym_q8 >= x).count() as i32
 }
 
 /// Eight order statistics of a 32-ray radial profile.  The rays sit at
@@ -183,9 +190,9 @@ pub fn shape(t: &Tier1) -> Vec<i32> {
     let rd = |o: usize| -> (i64, i64, i64, i64) {
         let area = u32::from_le_bytes([s[o], s[o + 1], s[o + 2], s[o + 3]]) as i64;
         let per = u16::from_le_bytes([s[o + 4], s[o + 5]]) as i64;
-        let aspect = u16::from_le_bytes([s[o + 6], s[o + 7]]) as i64;
+        let asym = t.shape_asym_q8(&s[o..o + 41]);
         let holes = s[o + 8] as i64;
-        (area, per, aspect, holes)
+        (area, per, asym, holes)
     };
     if n == 0 {
         return v;
@@ -218,8 +225,9 @@ pub fn shape(t: &Tier1) -> Vec<i32> {
 /// on a flat matte the front end folds to transparency): sorted radial
 /// profile, the two axis-aligned second moments as min and max (a quarter
 /// turn exchanges them) and |m11|, fill, component count, aspect class,
-/// opaque share, transition histograms (rows and columns exchange, so
-/// averaged) and the D4-canonical 8x8 occupancy code bit by bit.  It never
+/// opaque share, transition histograms (wire 4: opaque-run counts; rows and
+/// columns exchange, so averaged) and the D4-canonical 8x8 occupancy code bit
+/// by bit.  It never
 /// reads a colour.
 pub fn sil(t: &Tier1) -> Option<Vec<i32>> {
     if t.flags & WIRE_SIL == 0 {
@@ -232,8 +240,7 @@ pub fn sil(t: &Tier1) -> Option<Vec<i32>> {
     v[8] = m20.min(m02);
     v[9] = m20.max(m02);
     v[10] = s[34] as i32;
-    let asp = u16::from_le_bytes([s[36], s[37]]) as i64;
-    v[11] = aspect_class(asp) * 36;
+    v[11] = aspect_class(t.silhouette_asym_q8()) * 36;
     v[12] = s[38] as i32;
     v[13] = (s[39] as i32).min(255);
     v[14] = (u16::from_le_bytes([s[64], s[65]]) >> 8) as i32;

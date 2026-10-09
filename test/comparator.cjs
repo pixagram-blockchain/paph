@@ -35,7 +35,9 @@ for (const t of G.sha256)
      paph.hex(paph.sha256(Buffer.from(t.msg, 'ascii'))) === t.digest);
 
 head('golden: hash-profile identity');
-ok('hash_profile_id(defaults)', paph.hex(paph.hashProfileId(wire.DEFAULT_CONFIG)) === G.hash_profile_id_default);
+/* GOLDEN-004 is format 3's file: its identity is the wire-3 defaults' (1.2's
+   wire-4 identity is GOLDEN-W4's, checked by test/wire4-golden.cjs) */
+ok('hash_profile_id(defaults, wire 3)', paph.hex(paph.hashProfileId(Object.assign({}, wire.DEFAULT_CONFIG, { wire: 3 }))) === G.hash_profile_id_default);
 
 head('golden: CAL-001-PROVISIONAL');
 {
@@ -331,7 +333,7 @@ head('calibration core (demo/cal-core.cjs)');
   ok('a container-1 decoder refuses it', c1rej);
 
   head('golden: profile_cal004 (SPEC-004.2, container 3)');
-  const p4c = paph.cal();
+  const p4c = paph.cal004();
   const b4 = paph.profileEncode(p4c);
   ok('length ' + G.profile_cal004.len, b4.length === G.profile_cal004.len);
   ok('bytes', paph.hex(b4) === G.profile_cal004.bytes);

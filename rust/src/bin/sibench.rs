@@ -1,22 +1,48 @@
 //! PAPH-SI benchmark and fitting harness (SPEC-SI §9), the corpus the
-//! 1.1.1 screen fixes were measured on (docs/PAPH-X.md §6), and the chain's
-//! artworks (1.1.2, SPEC-SI §9.7).
+//! 1.1.1 screen fixes were measured on (docs/PAPH-X.md §6), the chain's
+//! artworks (1.1.2, SPEC-SI §9.7), and 1.2's calibration, XRank and wire-4
+//! measurements (docs/calibration/CAL-007-PROVISIONAL.log, X3-PROVISIONAL.log,
+//! SI4-PROVISIONAL.log).
 //!
-//!     sibench corpus [--bases N] [--distractors N] [--from K] [--out F]   hash a corpus, cache the wires
-//!     sibench corpus --chain DIR [--distractors N] [--out chain.bin]
+//!     sibench corpus [--bases N] [--distractors N] [--from K] [--wire 3] [--out F]
+//!                                                   hash a corpus, cache the wires (`--wire 3`: in
+//!                                                   1.0–1.1's format)
+//!     sibench corpus --chain DIR [--distractors N] [--wire 3] [--out chain.bin]
 //!                                                   the same with the chain's artworks as the bases
 //!                                                   (DIR from `node tools/chain-corpus.mjs`)
+//!     sibench wire [F]                              the wire format a corpus file holds (3 or 4; 0: none)
+//!     sibench dump --base B --tf NAME [--out DIR]   one synthetic work's wires as files, for xcli
 //!     sibench chain [--chain DIR]                   the chain's artworks themselves, and every pair
-//!                                                   of them through comparator 42, the screens,
-//!                                                   XRank, SI2 and SI3
-//!     sibench fit [--out PATH]                     fit SI2 (SI1 with --x1) on the synthetic fit split
-//!     sibench chainfit --corpus chain.bin [--name NAME] [--out PATH]
+//!                                                   of them through comparator 42 (CAL-007 and
+//!                                                   CAL-004), the screens, XRank (X3 and X2), SI3
+//!                                                   and SI4
+//!     sibench fit [--x2 | --x1] [--out PATH]       fit SI on the synthetic fit split: SI2 (--x2) and
+//!                                                   SI1 (--x1) are the artefacts in docs/calibration
+//!                                                   (fitted on wire-3 hashes: `--corpus corpus-w3.bin`
+//!                                                   reproduces them); under X3 the fit is
+//!                                                   SI-SYNTHETIC-X3, no shipped profile, written
+//!                                                   under --dir
+//!     sibench chainfit [--x2] [--corpus chain.bin] [--name NAME] [--out PATH]
 //!                                                   fit SI on the chain's works: two held-out folds
 //!                                                   against SI2, then the fit on every base, written
-//!                                                   to docs/calibration/NAME.psi (NAME defaults to
-//!                                                   SI3-PROVISIONAL, whose artefact the crate embeds;
+//!                                                   to docs/calibration/NAME.psi — NAME SI4-PROVISIONAL
+//!                                                   under X3, SI3-PROVISIONAL under --x2 (fitted on
+//!                                                   1.1.2's wire-3 hashes: `--corpus chain-w3.bin`);
 //!                                                   a fit on a later snapshot is another profile —
-//!                                                   give it another name)
+//!                                                   give it another name
+//!     sibench calib [--chain DIR] [--out DIR]      calibration snapshots (every quantity comparator
+//!                                                   42's lattice reads) of the chain's pairs and of
+//!                                                   both corpora's copies and negatives, TSV under
+//!                                                   target/calib (tools/cal-lattice.py reads them)
+//!     sibench calfit [--chain DIR] [--out PATH]    CAL-007's moderate structural bar from the
+//!                                                   chain's pairs of two authors' works, what it moves
+//!                                                   against CAL-004 on the chain and both corpora;
+//!                                                   writes the .pcal when the fit is CAL-007's
+//!     sibench xtrace [--out DIR]                   the cascade's geometry tier by tier on the chain's
+//!                                                   queries and every corpus copy query (what an exit
+//!                                                   from the anchor expansion would have to know)
+//!     sibench xtime [--chain DIR] [--step N]       where XRank's time goes on the chain's unrelated
+//!                                                   pairs, under CAL-004 and CAL-007
 //!     sibench eval [--profile PATH] [--big F] [--e2e N] [--nogate]
 //!                                                   stability matrix, the proposal's designs against
 //!                                                   SI, the funnel with the key index and XRank,
@@ -31,20 +57,28 @@
 //!                                                   section under the square's symmetries (split by
 //!                                                   the DCT thumbnail's grid and the shapes section's)
 //!     sibench lost [--nogate]                      the copies XRank does not read Copy, shown the
-//!                                                   target alone, and why (under X2, also the ones
-//!                                                   X1 loses and what keeps them); the copies
-//!                                                   comparator 42's own gated rank screens out
+//!                                                   target alone, and why (and the ones X1 loses
+//!                                                   and what keeps them); the copies comparator 42's
+//!                                                   own gated rank screens out
 //!     sibench doorprof [--real]                    the structural door on unrelated pairs: where
 //!                                                   it shuts, what each step costs, the cheapest orders
 //!                                                   (--real: every pair of distinct bases but those
 //!                                                   comparator 42 calls Copy)
 //!
 //! `--corpus NAME` picks the corpus file under `--dir` (default corpus.bin).
-//! Every command runs under the shipped X2-PROVISIONAL, or under 1.1.0's
-//! X1-PROVISIONAL with `--x1`; where SI is measured, under the synthetic fit
-//! bound to it (SI2, or SI1 with --x1), which SPEC-SI's synthetic tables were
-//! printed with — `--profile ../docs/calibration/SI3-PROVISIONAL.psi` measures
-//! the shipped SI3.  Experiments: `--bars l,b,g` (route lower bars), `--nodoor`.
+//! Every command runs under the shipped X3-PROVISIONAL (bound to
+//! CAL-007-PROVISIONAL), or under 1.1's X2-PROVISIONAL with `--x2` or 1.0's
+//! X1-PROVISIONAL with `--x1` (both bound to CAL-004-PROPOSED); where SI is
+//! measured, under the SI profile bound to it — the shipped SI4 under X3, the
+//! synthetic fits SI2 and SI1 under X2 and X1 — or `--profile PATH`.
+//! Experiments: `--bars l,b,g` (route lower bars), `--nodoor`.
+//!
+//! The caches hold the wires of the release that wrote them: `corpus` hashes
+//! in this release's format (wire 4) unless told `--wire 3`, `load` notes a
+//! file hashed in another, and `rust/sibench.sh` re-hashes such a file before
+//! it measures.  A fitted artefact never replaces a committed one in
+//! docs/calibration with other bytes: the run says NOT WRITTEN and exits 2
+//! after its report.
 //!
 //! The synthetic corpus is built from the engine's own generators
 //! (`synth.rs`): bases under twenty transforms, and same-style distractors
@@ -301,7 +335,8 @@ pub struct Rec {
     pub t2: Vec<u8>,
 }
 
-fn hash_all(jobs: Vec<(i32, i32, Box<dyn Fn() -> Img + Send + Sync>)>) -> Vec<Rec> {
+/// Hash every job in the given wire format (3 or 4), on every core.
+fn hash_all(jobs: Vec<(i32, i32, Box<dyn Fn() -> Img + Send + Sync>)>, wire: u8) -> Vec<Rec> {
     let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1).max(1);
     let n = jobs.len();
     let jobs = std::sync::Arc::new(jobs);
@@ -311,7 +346,7 @@ fn hash_all(jobs: Vec<(i32, i32, Box<dyn Fn() -> Img + Send + Sync>)>) -> Vec<Re
         for _ in 0..threads {
             let (jobs, next, out) = (jobs.clone(), next.clone(), out.clone());
             s.spawn(move || {
-                let cfg = Config::default();
+                let cfg = Config { wire, ..Config::default() };
                 let rot = RotCache::new(&pattern());
                 loop {
                     let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -344,9 +379,25 @@ fn save(path: &str, recs: &[Rec]) {
     std::fs::write(path, b).expect("write corpus");
 }
 
+/// The wire format a corpus file was hashed in: its first work's Tier 1
+/// version byte (0 for an empty or unreadable file).  Read from the header
+/// alone, so `sibench.sh` can ask before it trusts a cache.
+fn file_wire(path: &str) -> u8 {
+    use std::io::Read;
+    let mut b = [0u8; 25];
+    match std::fs::File::open(path).and_then(|mut f| f.read_exact(&mut b)) {
+        Ok(()) if &b[0..4] == b"SIC1" => b[24],
+        _ => 0,
+    }
+}
+
 pub fn load(path: &str) -> Vec<Rec> {
     let b = std::fs::read(path).expect("read corpus (run `sibench corpus` first)");
     assert_eq!(&b[0..4], b"SIC1");
+    let w = file_wire(path);
+    if w != 0 && w != paph::wire::VERSION {
+        eprintln!("note: {path} holds wire-{w} hashes, and this release writes wire {}: its measurements are of wire {w}'s sections (delete the file, or `sibench corpus` again, for this release's)", paph::wire::VERSION);
+    }
     let n = u32::from_le_bytes([b[4], b[5], b[6], b[7]]) as usize;
     let mut o = 8;
     let mut v = Vec::with_capacity(n);
@@ -510,8 +561,9 @@ impl Corpus {
         let nb = recs.iter().map(|r| r.base).max().unwrap_or(-1) + 1;
         let dist: Vec<usize> = (0..recs.len()).filter(|&i| recs[i].base < 0).collect();
         let (fit_d, ev_d) = (dist[..dist.len() / 2].to_vec(), dist[dist.len() / 2..].to_vec());
-        // comparator 42 on every base × variant pair: what the verifier can confirm
-        let base = Profile::cal004();
+        // comparator 42 on every base × variant pair, under the calibration
+        // the X profile is bound to: what the verifier can confirm
+        let base = xb.base.clone();
         let bcfg = paph::v4::bind(&Config::default(), &base);
         let mut verdict = HashMap::new();
         for b in 0..nb {
@@ -661,18 +713,20 @@ fn fam_name(f: usize) -> &'static str {
 
 // ------------------------------------------------------------------- fit
 
-/// The SI profile a measurement reads: `--profile PATH`, or the synthetic
-/// fit bound to the X profile in use — SI1 under X1, SI2 under X2 — which the
-/// synthetic corpus' tables were printed with.  The shipped SI3 is
-/// `--profile ../docs/calibration/SI3-PROVISIONAL.psi`.
+/// The SI profile a measurement reads: `--profile PATH`, or the profile
+/// bound to the X profile in use — SI1 under X1 and SI2 under X2 (the
+/// synthetic fit SPEC-SI's synthetic tables were printed with), the shipped
+/// SI4 under X3.
 fn si_profile_arg(args: &[String], xb: &XBound) -> SiProfile {
     match args.iter().position(|a| a == "--profile") {
         Some(i) => SiProfile::decode(&std::fs::read(&args[i + 1]).expect("read profile")).expect("decode profile"),
         None => {
             if xb.xid == XProfile::x1().id() {
                 SiProfile::si1()
-            } else {
+            } else if xb.xid == XProfile::x2().id() {
                 SiProfile::si2()
+            } else {
+                SiProfile::shipped()
             }
         }
     }
@@ -685,8 +739,11 @@ fn si_profile_arg(args: &[String], xb: &XBound) -> SiProfile {
 fn si_name_for(xb: &XBound) -> &'static str {
     if xb.xid == XProfile::x1().id() {
         "SI1-PROVISIONAL"
-    } else {
+    } else if xb.xid == XProfile::x2().id() {
         "SI2-PROVISIONAL"
+    } else {
+        // a synthetic fit bound to X3 is no shipped profile
+        "SI-SYNTHETIC-X3"
     }
 }
 
@@ -714,9 +771,9 @@ fn cmd_fit(c: &Corpus, xb: &XBound, out: &str) {
     let inp = FitInput { fam: &c.fam, mh: &mh, background: &c.fit_d, noise_pairs: &noise, evidence_pairs: &evidence, related: None };
     let prof = fit(&inp, &o);
     let b = prof.encode();
-    std::fs::write(out, &b).expect("write profile");
+    let wrote = write_artefact(out, &b);
     println!("fitted {} on {} background works, {} noise pairs, {} evidence pairs in {:.2} s", prof.name_str(), c.fit_d.len(), noise.len(), evidence.len(), t0.elapsed().as_secs_f64());
-    println!("  {} bytes, id {}  → {out}", b.len(), paph::sha256::hex(&prof.id()));
+    println!("  {} bytes, id {}  → {}", b.len(), paph::sha256::hex(&prof.id()), if wrote { out.to_string() } else { format!("not written ({out} differs)") });
     println!("  probes {}  threshold {}  budget {}", prof.probes, prof.threshold, prof.budget);
     println!("  | family | weights none / near / exact | axis noise σ (projection units) |");
     for f in 0..FAMILIES {
@@ -1120,7 +1177,7 @@ fn cmd_eval(c: &Corpus, prof: &SiProfile, xb: &XBound, args: &[String], chain: b
     let mut false_copies = 0usize;
     let mut false_kinds: HashMap<(&'static str, &'static str), usize> = HashMap::new();
     let mut false_42 = 0usize;
-    let base42 = Profile::cal004();
+    let base42 = xb.base.clone();
     let bcfg42 = paph::v4::bind(&Config::default(), &base42);
     let mut false_bg: HashMap<(i32, i32), usize> = HashMap::new();
     let first_d = c.recs.iter().position(|r| r.base < 0).unwrap_or(0);
@@ -1408,7 +1465,8 @@ fn cmd_route(c: &Corpus, xb: &XBound, args: &[String]) {
     let mut g_eq = [[0usize; 4]; 4];
     let mut g_n = [0usize; 4];
     // the SI cells on the same copies, under the profile `si_profile_arg`
-    // picks (SI1 and SI2 are one fit; SI3 with --profile)
+    // picks (SI4 under X3, SI2 under --x2, SI1 under --x1 — SI1 and SI2 are
+    // one fit; any other with --profile)
     let prof = si_profile_arg(args, xb);
     let mut si_eq = [[0usize; FAMILIES]; 4];
     let mut si_n = [[0usize; FAMILIES]; 4];
@@ -1577,10 +1635,11 @@ fn cmd_route(c: &Corpus, xb: &XBound, args: &[String]) {
 
 /// `sibench chain [--chain DIR]`: the chain's artworks themselves — what they
 /// are (sizes, integer upscales, transparency, palettes, keypoints, hashing
-/// cost) and every pair of them through comparator 42, its gated rank's
-/// screen, the pair screen, XRank shown the target alone under X1 and X2, and
-/// SI2's score.  The pairs comparator 42 calls Copy are written, with their
-/// accounts, to DIR/copies.tsv beside the snapshot, not printed.
+/// cost) and every pair of them through comparator 42 (the shipped CAL-007,
+/// and 1.1's CAL-004 beside it), its gated rank's screen, the pair screen,
+/// XRank shown the target alone under the shipped X3 and 1.1's X2, and the
+/// shipped SI4's score.  The pairs comparator 42 calls Copy are written, with
+/// their accounts, to DIR/copies.tsv beside the snapshot, not printed.
 fn cmd_chain(src: &str) {
     use paph::x::compare::xscreen;
     use paph::x::route::RouteClass;
@@ -1607,7 +1666,8 @@ fn cmd_chain(src: &str) {
         t_hash.push(t0.elapsed().as_secs_f64() * 1e3);
     }
     let sides: Vec<Prepared> = fps.iter().map(|f| Prepared::new(&f.t1, Some(&f.t2)).unwrap()).collect();
-    let (x1b, x2b) = (XBound::x1(), XBound::shipped());
+    // the shipped pair (X3, CAL-007) and 1.1's (X2, CAL-004)
+    let (x1b, x2b) = (XBound::x2(), XBound::shipped());
     let mut xs2 = Vec::new();
     for f in fps.iter() {
         let t0 = Instant::now();
@@ -1633,7 +1693,7 @@ fn cmd_chain(src: &str) {
     println!("| palette entries on the wire | {} |", q(&mut pal));
     println!("| Tier-1 local codes | {} |", q(&mut codes));
     println!("| hash, native, one core (ms) | {} |", q(&mut t_hash.clone()));
-    println!("| xprepare under X2 (ms) | {} |", q(&mut t_prep.clone()));
+    println!("| xprepare under X3 (ms) | {} |", q(&mut t_prep.clone()));
     let count = |f: &dyn Fn(usize) -> bool| (0..n).filter(|&i| f(i)).count();
     let pctn = |c: usize| 100.0 * c as f64 / n.max(1) as f64;
     let up = count(&|i| sides[i].t1.scale > 1);
@@ -1654,9 +1714,13 @@ fn cmd_chain(src: &str) {
     println!(".");
 
     // ---- every pair
-    let base = Profile::cal004();
+    let base = Profile::shipped();
     let bcfg = paph::v4::bind(&cfg, &base);
-    let si = SiProfile::si2();
+    // comparator 42 under 1.1's calibration too, for the table
+    let base4 = Profile::cal004();
+    let mut st4 = [0usize; 6];
+    let mut st4_same = [0usize; 6];
+    let si = SiProfile::shipped();
     let sigs: Vec<SiSig> = (0..n).map(|i| SiSig::from_prepared(&sides[i], &x2b, &si)).collect();
     let sq: Vec<SiQuery> = (0..n).map(|i| SiQuery::from_prepared(&sides[i], &x2b, &si)).collect();
     let (mut ctx, mut rs) = (XCtx::new(), RankScratch::new());
@@ -1664,6 +1728,7 @@ fn cmd_chain(src: &str) {
     let mut st42 = [0usize; 6];
     let mut st42_same = [0usize; 6];
     let mut why: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    let mut why4: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
     let (mut t42, mut tx2, mut tx1, mut tscr, mut trank42) = (0f64, 0f64, 0f64, 0f64, 0f64);
     let mut cls = [0usize; 4];
     let mut scr = [0usize; 5];
@@ -1672,10 +1737,10 @@ fn cmd_chain(src: &str) {
     let mut gate42_out = [0usize; 6];
     let (mut x2_copy, mut x1_copy, mut x2_false, mut x1_false, mut gate42_lost) = (0usize, 0usize, 0usize, 0usize, 0usize);
     let mut copies: Vec<String> = Vec::new();
-    // XRank under X2 by how it decided: [gated, FAST, FALLBACK / EXACT42 ran] × (count, seconds)
+    // XRank under X3 by how it decided: [gated, FAST, FALLBACK / EXACT42 ran] × (count, seconds)
     let mut exec2 = [(0usize, 0f64); 3];
     let (mut all_rows, mut hams, mut full, mut exact_struct) = (0usize, 0u64, 0u64, 0usize);
-    // (comparator 42's state, XRank's under X2) → queries
+    // (comparator 42's state, XRank's under X3) → queries
     let mut xstate: std::collections::BTreeMap<(i32, i32), usize> = std::collections::BTreeMap::new();
     let mut copy_pairs: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
     let (mut ncopy, mut same_author) = (0usize, 0usize);
@@ -1691,6 +1756,13 @@ fn cmd_chain(src: &str) {
             let s42 = state_code(v.verdict);
             st42[s42.clamp(0, 5) as usize] += 1;
             st42_same[s42.clamp(0, 5) as usize] += (works[i].author == works[j].author) as usize;
+            let r4 = compare_in(&mut PairCtx::new(ca, cb), swapped, &paph::v4::bind(&cfg, &base4), &base4, Reading::Lean).base;
+            let v4 = state_code(r4.verdict);
+            if v4 == 2 {
+                *why4.entry(r4.class.to_string()).or_insert(0) += 1;
+            }
+            st4[v4.clamp(0, 5) as usize] += 1;
+            st4_same[v4.clamp(0, 5) as usize] += (works[i].author == works[j].author) as usize;
             if s42 == 2 {
                 *why.entry(v.class.to_string()).or_insert(0) += 1;
             }
@@ -1761,19 +1833,22 @@ fn cmd_chain(src: &str) {
     let names = ["Unrelated", "Related", "Suspected", "Copy", "Identical", "Indeterminate"];
     println!("\nEvery pair of distinct works ({np} pairs, {} queries in both arrival orders):\n", 2 * np);
     let same_pairs: usize = st42_same.iter().sum();
-    println!("| comparator 42 (lean) | pairs | of them one author's ({same_pairs} such pairs in all) |");
-    println!("|---|---:|---:|");
+    println!("| comparator 42 (lean) | pairs, {} | of them one author's ({same_pairs} such pairs in all) | pairs, {} | of them one author's |", base.name_str(), base4.name_str());
+    println!("|---|---:|---:|---:|---:|");
     for k in 0..6 {
-        println!("| {} | {} | {} |", names[k], st42[k], st42_same[k]);
+        println!("| {} | {} | {} | {} | {} |", names[k], st42[k], st42_same[k], st4[k], st4_same[k]);
     }
-    println!("\nComparator 42's class on the Suspected pairs: {}.", why.iter().rev().map(|(k, v)| format!("{k} {v}")).collect::<Vec<_>>().join("; "));
-    println!("\nOf the {ncopy} pairs comparator 42 calls Copy or Identical, {same_author} have one author; XRank shown the target alone reads Copy on {x2_copy} of {} queries under X2 and {x1_copy} under X1; comparator 42's own gated rank screens out {gate42_lost} of the {ncopy}; SI2 admits {si_adm_copy} of the {} queries at θ = {}. (The pairs: {src}/copies.tsv.)", 2 * ncopy, 2 * ncopy, si.threshold);
+    let classes = |w: &std::collections::BTreeMap<String, usize>| -> String {
+        if w.is_empty() { "none (no pair is Suspected)".to_string() } else { w.iter().rev().map(|(k, v)| format!("{k} {v}")).collect::<Vec<_>>().join("; ") }
+    };
+    println!("\nComparator 42's class on the Suspected pairs: under {} {}; under {} {}.", base.name_str(), classes(&why), base4.name_str(), classes(&why4));
+    println!("\nOf the {ncopy} pairs comparator 42 calls Copy or Identical, {same_author} have one author; XRank shown the target alone reads Copy on {x2_copy} of {} queries under X3 and {x1_copy} under X2; comparator 42's own gated rank screens out {gate42_lost} of the {ncopy}; SI4 admits {si_adm_copy} of the {} queries at θ = {}. (The pairs: {src}/copies.tsv.)", 2 * ncopy, 2 * ncopy, si.threshold);
     let nneg = 2 * (np - ncopy);
-    println!("On the {} other queries: XRank reads Copy on {x2_false} under X2 and {x1_false} under X1; SI2 admits {si_adm} ({:.2}%).", nneg, 100.0 * si_adm as f64 / nneg.max(1) as f64);
-    println!("The route class under X2: Reject {} ({:.1}%), Defer {} ({:.1}%), Fast {} ({:.1}%), Absent {}; the pair screen: Reject {}, Defer {} ({door_open} of them on the open structural door), Pass {}, Identical {}; comparator 42's stage-1 screen passes {gate42_pass} ({:.1}%).", cls[0], 100.0 * cls[0] as f64 / np as f64, cls[1], 100.0 * cls[1] as f64 / np as f64, cls[2], 100.0 * cls[2] as f64 / np as f64, cls[3], scr[0], scr[1], scr[2], scr[3], 100.0 * gate42_pass as f64 / np as f64);
-    println!("Mean cost a pair, native, one core: comparator 42 {:.0} µs; comparator 42's gated rank (`rank`, gate: true — the stage-1 screen, and comparator 42 on the pairs it passes) {:.0} µs a candidate; the pair screen (X2) {:.1} µs; XRank a query, X2 {:.0} µs, X1 {:.0} µs.", 1e6 * t42 / np as f64, 1e6 * trank42 / np as f64, 1e6 * tscr / np as f64, 1e6 * tx2 / (2 * np) as f64, 1e6 * tx1 / (2 * np) as f64);
+    println!("On the {} other queries: XRank reads Copy on {x2_false} under X3 and {x1_false} under X2; SI4 admits {si_adm} ({:.2}%).", nneg, 100.0 * si_adm as f64 / nneg.max(1) as f64);
+    println!("The route class under X3: Reject {} ({:.1}%), Defer {} ({:.1}%), Fast {} ({:.1}%), Absent {}; the pair screen: Reject {}, Defer {} ({door_open} of them on the open structural door), Pass {}, Identical {}; comparator 42's stage-1 screen passes {gate42_pass} ({:.1}%).", cls[0], 100.0 * cls[0] as f64 / np as f64, cls[1], 100.0 * cls[1] as f64 / np as f64, cls[2], 100.0 * cls[2] as f64 / np as f64, cls[3], scr[0], scr[1], scr[2], scr[3], 100.0 * gate42_pass as f64 / np as f64);
+    println!("Mean cost a pair, native, one core: comparator 42 {:.0} µs; comparator 42's gated rank (`rank`, gate: true — the stage-1 screen, and comparator 42 on the pairs it passes) {:.0} µs a candidate; the pair screen (X3) {:.1} µs; XRank a query, X3 {:.0} µs, X2 {:.0} µs.", 1e6 * t42 / np as f64, 1e6 * trank42 / np as f64, 1e6 * tscr / np as f64, 1e6 * tx2 / (2 * np) as f64, 1e6 * tx1 / (2 * np) as f64);
     let lab = ["gated out", "decided by the cascade", "EXACT42 ran (fallback)"];
-    println!("XRank under X2, by how it decided: {}.", (0..3).map(|e| format!("{} {} ({:.0} µs each)", lab[e], exec2[e].0, 1e6 * exec2[e].1 / exec2[e].0.max(1) as f64)).collect::<Vec<_>>().join("; "));
+    println!("XRank under X3, by how it decided: {}.", (0..3).map(|e| format!("{} {} ({:.0} µs each)", lab[e], exec2[e].0, 1e6 * exec2[e].1 / exec2[e].0.max(1) as f64)).collect::<Vec<_>>().join("; "));
     let ncas = exec2[1].0 + exec2[2].0;
     let sname = |s: i32| -> &'static str { match s { -1 => "gated out", 6 => "NotCopy", 0 => "Unrelated", 1 => "Related", 2 => "Suspected", 3 => "Copy", 4 => "Identical", _ => "Indeterminate" } };
     let by42: Vec<String> = (0..6).filter_map(|s| {
@@ -1784,14 +1859,14 @@ fn cmd_chain(src: &str) {
     println!("On the {ncas} queries that reached the cascade (decided there or by EXACT42), the sparse scan read every row of the smaller side on {all_rows} ({:.1}%) and computed {:.1}% of the descriptor distances the exhaustive scan computes ({hams} of {full}); every structural channel was computed exactly on {exact_struct} ({:.1}%).", 100.0 * all_rows as f64 / ncas.max(1) as f64, 100.0 * hams as f64 / full.max(1) as f64, 100.0 * exact_struct as f64 / ncas.max(1) as f64);
 
     // ---- SI on the real population: how the cells spread, which families
-    // carry an unrelated pair's score, what is admitted — SI2 (the synthetic
-    // fit) and SI3 (fitted on these very works: in-sample, the held-out
+    // carry an unrelated pair's score, what is admitted — 1.1.2's SI3 on
+    // these wire-4 hashes, and SI4 (fitted on them: in-sample, the held-out
     // numbers are `sibench chainfit`'s)
     use paph::x::si::code::coarse;
     let fam_names = ["runs", "tone", "pal", "shape", "sil", "kpgeo", "local", "band"];
-    for (prof, label) in [(SiProfile::si2(), "SI2, the synthetic fit"), (SiProfile::si3(), "SI3, fitted on these works (in-sample)")] {
-        let sigs: Vec<SiSig> = (0..n).map(|i| SiSig::from_prepared(&sides[i], &x2b, &prof)).collect();
-        let sq: Vec<SiQuery> = (0..n).map(|i| SiQuery::from_prepared(&sides[i], &x2b, &prof)).collect();
+    for (prof, label, xbb) in [(SiProfile::si3(), "SI3, 1.1.2's chain fit on wire-3 hashes (bound to X2)", &x1b), (SiProfile::shipped(), "SI4, fitted on these works' wire-4 hashes (in-sample; bound to X3)", &x2b)] {
+        let sigs: Vec<SiSig> = (0..n).map(|i| SiSig::from_prepared(&sides[i], xbb, &prof)).collect();
+        let sq: Vec<SiQuery> = (0..n).map(|i| SiQuery::from_prepared(&sides[i], xbb, &prof)).collect();
         println!("\n{label}: its cells over the {n} works (fine 256 / coarse 16):\n");
         println!("| family | present | occupied fine | effective fine cells | largest fine cell | effective coarse cells | P(random pair shares a fine cell) |");
         println!("|---|---:|---:|---:|---:|---:|---:|");
@@ -1849,7 +1924,9 @@ fn cmd_chain(src: &str) {
 /// as (record, record) with the smaller first: on the chain's corpus, works
 /// that are copies of each other before any transform — never unrelated.
 fn originals_copies42(c: &Corpus) -> std::collections::HashSet<(usize, usize)> {
-    let base = Profile::cal004();
+    // Copy and Identical read the same under every comparator-42 calibration
+    // this crate ships (CAL-007 moved a Suspected bar only)
+    let base = Profile::shipped();
     let bcfg = paph::v4::bind(&Config::default(), &base);
     let mut copies42 = std::collections::HashSet::new();
     for a in 0..c.nb {
@@ -1963,10 +2040,11 @@ fn si_heldout(c: &Corpus, prof: &SiProfile, test: &[i32], copies42: &std::collec
     h
 }
 
-/// `sibench chainfit [--out PATH]` on the chain's corpus (`--corpus
-/// chain.bin`): SI fitted on real works.  Two folds (the corpus' own split)
-/// fit on one half and are measured on the other against SI2; then the fit on
-/// every base, written as SI3-PROVISIONAL.
+/// `sibench chainfit [--out PATH]` on the chain's corpus (`--corpus`,
+/// default chain.bin): SI fitted on real works.  Two folds (the corpus' own
+/// split) fit on one half and are measured on the other against SI2; then
+/// the fit on every base, written under `name` — SI4-PROVISIONAL under X3 (on
+/// the wire-4 hashes), SI3-PROVISIONAL under X2 (1.1.2's, on wire-3 hashes).
 fn cmd_chainfit(c: &Corpus, xb: &XBound, out: &str, name: &str) {
     assert!(!name.is_empty() && name.len() <= 16, "--name: 1 to 16 bytes");
     let mh: Vec<SiSig> = c.routes.iter().map(SiSig::minhash).collect();
@@ -2034,8 +2112,8 @@ fn cmd_chainfit(c: &Corpus, xb: &XBound, out: &str, name: &str) {
     }
     let (p3, kept) = chain_profile(c, &mh, &all, name, xb, &copies42);
     let b = p3.encode();
-    std::fs::write(out, &b).expect("write profile");
-    println!("\nfitted {} on all {} bases' originals ({} kept SI2's codebook): {} bytes, id {} → {out}", p3.name_str(), c.nb, if kept.is_empty() { "none".to_string() } else { kept.join(", ") }, b.len(), paph::sha256::hex(&p3.id()));
+    let wrote = write_artefact(out, &b);
+    println!("\nfitted {} on all {} bases' originals ({} kept SI2's codebook): {} bytes, id {} → {}", p3.name_str(), c.nb, if kept.is_empty() { "none".to_string() } else { kept.join(", ") }, b.len(), paph::sha256::hex(&p3.id()), if wrote { out.to_string() } else { format!("not written ({out} differs)") });
     println!("  probes {}  threshold {}  budget {}", p3.probes, p3.threshold, p3.budget);
     println!("  | family | weights none / near / exact | axis noise σ (projection units) |");
     for f in 0..FAMILIES {
@@ -2194,12 +2272,471 @@ fn cmd_doorprof(c: &Corpus, xb: &XBound, real: bool) {
     }
 }
 
-/// The X profile a command runs under: the shipped X2, or X1 with `--x1`.
+// ------------------------------------------------------------- calibration
+
+/// The calibration snapshot of one pair (1.2, CAL-007): every quantity
+/// comparator 42's lattice reads, taken BEFORE the profile's decision tables
+/// and bars — the six structural channels' raw values, the local channel's
+/// chance-corrected margin and diversity, the geometric margin, the geometric
+/// diversity reading, the inliers, the topology class — so a candidate
+/// profile's verdict on the pair is recomputed without re-measuring it
+/// (demo/cal-core.cjs's snapshot, in Rust).  The measurement fields of the
+/// profile (hamming_t, confidence and geometry anchors, model floors, grid)
+/// stay CAL-004's, and the row ends with CAL-004's verdict, which a
+/// recomputation under CAL-004 must reproduce.
+pub const CALIB_HEADER: &str = "kind\ta\tb\ttf\tsame\tidentical\tdct\tdct_m\tshape\tshape_m\ttopology\ttopology_m\truns\truns_m\tpalette\tpalette_m\tsilhouette\tsilhouette_m\tlocal_m\tlocal_margin\tlocal_div\tcoverage_min\tgeo_m\tgeo_margin\tnmodels\tdiv_combined\tinliers\ttopo\tmirror\tverdict\tclass\tbasis";
+
+fn calib_row(pa: &Prepared, pb: &Prepared, base: &Profile, bcfg: &Config) -> String {
+    let swapped = canon_swapped(pa, pb);
+    let (ca, cb) = if swapped { (pb, pa) } else { (pa, pb) };
+    let mut pc = PairCtx::new(ca, cb);
+    let r = compare_in(&mut pc, swapped, bcfg, base, Reading::Full);
+    let b = &r.base;
+    let v3 = b.v3.as_ref().expect("full reading");
+    let mut s = format!("{}", v3.identical as i32);
+    for name in ["dct", "shape", "topology", "runs", "palette", "silhouette"] {
+        let ch = &v3.channels.iter().find(|(n, _)| *n == name).unwrap().1;
+        s.push_str(&format!("\t{}\t{}", ch.value, ch.measurable as i32));
+    }
+    let l = b.local.as_ref().unwrap();
+    s.push_str(&format!(
+        "\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+        l.measurable as i32,
+        l.margin,
+        l.diversity,
+        l.coverage_a.coverage.min(l.coverage_b.coverage),
+        b.geo_measurable as i32,
+        b.geo_margin,
+        r.models42.len(),
+        r.diversity_geo.combined,
+        b.total_inliers,
+        b.topology,
+        r.models42.iter().any(|m| m.mirror) as i32,
+        b.verdict,
+        b.class,
+        b.basis.join(",")
+    ));
+    s
+}
+
+/// `sibench calib`: snapshots of the chain's pairs and of a corpus's copies
+/// and unrelated pairs, as TSV under target/calib/ (`tools/cal-lattice.py`
+/// recomputes the lattice on them under candidate profiles).
+fn cmd_calib(args: &[String], dir: &str) {
+    let out_dir = sarg(args, "--out", "target/calib");
+    std::fs::create_dir_all(&out_dir).unwrap();
+    let base = Profile::cal004();
+    let bcfg = paph::v4::bind(&Config::default(), &base);
+    let t0 = Instant::now();
+    // the chain's works, every pair
+    let src = sarg(args, "--chain", "target/chain-corpus");
+    if std::path::Path::new(&format!("{src}/index.tsv")).exists() {
+        let (works, _) = load_chain(&src);
+        let cfg = Config::default();
+        let rot = RotCache::new(&pattern());
+        let sides: Vec<Prepared> = works.iter().map(|w| { let f = hash(&w.img.px, w.img.w, w.img.h, &cfg, &rot); Prepared::new(&f.t1, Some(&f.t2)).unwrap() }).collect();
+        let mut o = String::from(CALIB_HEADER);
+        o.push('\n');
+        for i in 0..works.len() {
+            for j in i + 1..works.len() {
+                o.push_str(&format!("chain\t{i}\t{j}\t-\t{}\t{}\n", (works[i].author == works[j].author) as i32, calib_row(&sides[i], &sides[j], &base, &bcfg)));
+            }
+        }
+        std::fs::write(format!("{out_dir}/chain-pairs.tsv"), o).unwrap();
+        eprintln!("calib: {} chain works, every pair ({:.1} s)", works.len(), t0.elapsed().as_secs_f64());
+    }
+    // the corpora: every base against its twenty transforms, every pair of
+    // bases, and each base against 24 distractors of the evaluation half
+    for name in ["chain.bin", "corpus.bin"] {
+        let path = format!("{dir}/{name}");
+        if !std::path::Path::new(&path).exists() {
+            continue;
+        }
+        let recs = load(&path);
+        let sides: Vec<Prepared> = recs.iter().map(|r| Prepared::new(&r.t1, Some(&r.t2)).unwrap()).collect();
+        let mut at = HashMap::new();
+        for (i, r) in recs.iter().enumerate() {
+            if r.base >= 0 {
+                at.insert((r.base, r.tf), i);
+            }
+        }
+        let nb = recs.iter().map(|r| r.base).max().unwrap_or(-1) + 1;
+        let dist: Vec<usize> = (0..recs.len()).filter(|&i| recs[i].base < 0).collect();
+        let ev = &dist[dist.len() / 2..];
+        let mut o = String::from(CALIB_HEADER);
+        o.push('\n');
+        for b in 0..nb {
+            let i = at[&(b, 0)];
+            for t in 1..TRANSFORMS.len() as i32 {
+                let j = at[&(b, t)];
+                o.push_str(&format!("copy\t{b}\t{b}\t{}\t-\t{}\n", TRANSFORMS[t as usize], calib_row(&sides[i], &sides[j], &base, &bcfg)));
+            }
+            if name == "corpus.bin" {
+                for b2 in b + 1..nb {
+                    o.push_str(&format!("bases\t{b}\t{b2}\t-\t-\t{}\n", calib_row(&sides[i], &sides[at[&(b2, 0)]], &base, &bcfg)));
+                }
+            }
+            for k in 0..24 {
+                let d = ev[(b as usize * 97 + k * 331) % ev.len()];
+                o.push_str(&format!("distractor\t{b}\t{d}\t-\t-\t{}\n", calib_row(&sides[i], &sides[d], &base, &bcfg)));
+            }
+        }
+        let outf = format!("{out_dir}/{}.tsv", if name == "chain.bin" { "realbase" } else { "synth" });
+        std::fs::write(&outf, o).unwrap();
+        eprintln!("calib: {path} → {outf} ({:.1} s)", t0.elapsed().as_secs_f64());
+    }
+}
+
+/// `sibench calfit`: CAL-007's moderate structural bar from the chain's
+/// works, and what CAL-007 changes against CAL-004 on the chain's pairs, the
+/// chain's real-base corpus and the synthetic corpus.  Writes the artefact
+/// (docs/calibration/CAL-007-PROVISIONAL.pcal, or `--out`) when the fitted
+/// bar is the one `Profile::cal007` holds.
+fn cmd_calfit(args: &[String], dir: &str) {
+    let (p4, p7) = (Profile::cal004(), Profile::cal007());
+    let bcfg = paph::v4::bind(&Config::default(), &p4);
+    let src = sarg(args, "--chain", "target/chain-corpus");
+    let (works, _) = load_chain(&src);
+    let cfg = Config::default();
+    let rot = RotCache::new(&pattern());
+    let sides: Vec<Prepared> = works.iter().map(|w| { let f = hash(&w.img.px, w.img.w, w.img.h, &cfg, &rot); Prepared::new(&f.t1, Some(&f.t2)).unwrap() }).collect();
+    let n = works.len();
+    let judge = |pa: &Prepared, pb: &Prepared, p: &Profile| -> (i32, i64, bool, String) {
+        let swapped = canon_swapped(pa, pb);
+        let (ca, cb) = if swapped { (pb, pa) } else { (pa, pb) };
+        let r = compare_in(&mut PairCtx::new(ca, cb), swapped, &bcfg, p, Reading::Lean).base;
+        (state_code(r.verdict), r.structural, r.certifiable, r.class)
+    };
+    // every pair of two authors' works: the structural scores the bar must clear
+    let authors: Vec<&str> = works.iter().map(|w| w.author.as_str()).collect();
+    let mut cross: Vec<(i64, usize, usize)> = Vec::new();
+    let mut st = [[[0usize; 6]; 2]; 2]; // [profile][same author][state]
+    for i in 0..n {
+        for j in i + 1..n {
+            let same = (authors[i] == authors[j]) as usize;
+            let a = judge(&sides[i], &sides[j], &p4);
+            let b = judge(&sides[i], &sides[j], &p7);
+            st[0][same][a.0.clamp(0, 5) as usize] += 1;
+            st[1][same][b.0.clamp(0, 5) as usize] += 1;
+            if same == 0 && a.2 && a.1 < p4.thresholds[1] as i64 {
+                cross.push((a.1, i, j));
+            }
+        }
+    }
+    cross.sort_unstable_by(|x, y| y.cmp(x));
+    let top = cross.first().map(|c| c.0).unwrap_or(0);
+    let bar = (top / 100 + 1) * 100;
+    let ncross = st[0][0].iter().sum::<usize>();
+    let nsame = st[0][1].iter().sum::<usize>();
+    println!("The chain's works — {src} ({}): {n} works by {} authors, {} pairs: {ncross} of two authors' works, {nsame} of one author's.", chain_snapshot(&src), authors.iter().collect::<std::collections::BTreeSet<_>>().len(), ncross + nsame);
+    println!("\nThe highest structural scores of certifiable pairs of two authors' works (below the strong bar {}): {}.", p4.thresholds[1], cross.iter().take(12).map(|c| c.0.to_string()).collect::<Vec<_>>().join(", "));
+    println!("The fitted moderate structural bar: the next multiple of 100 above {top}: {bar} (CAL-004: {}; Profile::cal007: {}).", p4.thresholds[2], p7.thresholds[2]);
+    // the curve, and the two author folds
+    let above = |t: i64, v: &[(i64, usize, usize)]| v.iter().filter(|c| c.0 >= t).count();
+    println!("\n| moderate bar | pairs of two authors' works at or above it, certifiable | share of {ncross} |");
+    println!("|---:|---:|---:|");
+    for t in [2400i64, 2600, 2800, 3000, 3200, 3300, 3400] {
+        println!("| {t} | {} | {:.3} % |", above(t, &cross), 100.0 * above(t, &cross) as f64 / ncross.max(1) as f64);
+    }
+    let fold = |a: &str| -> usize { (paph::sha256::sha256(a.as_bytes())[0] & 1) as usize };
+    for f in 0..2usize {
+        let tr: Vec<(i64, usize, usize)> = cross.iter().copied().filter(|c| fold(authors[c.1]) == f && fold(authors[c.2]) == f).collect();
+        let te: Vec<(i64, usize, usize)> = cross.iter().copied().filter(|c| fold(authors[c.1]) != f && fold(authors[c.2]) != f).collect();
+        let fb = (tr.first().map(|c| c.0).unwrap_or(0) / 100 + 1) * 100;
+        let ntr: usize = (0..n).flat_map(|i| (i + 1..n).map(move |j| (i, j))).filter(|&(i, j)| authors[i] != authors[j] && fold(authors[i]) == f && fold(authors[j]) == f).count();
+        let nte: usize = (0..n).flat_map(|i| (i + 1..n).map(move |j| (i, j))).filter(|&(i, j)| authors[i] != authors[j] && fold(authors[i]) != f && fold(authors[j]) != f).count();
+        println!("Author fold {f} alone ({ntr} pairs of two of its authors' works) fits {fb}; of the other fold's {nte} such pairs, {} reach it.", above(fb, &te));
+    }
+    let names = ["Unrelated", "Related", "Suspected", "Copy", "Identical", "Indeterminate"];
+    println!("\n| the chain's pairs | two authors: CAL-004 | CAL-007 | one author: CAL-004 | CAL-007 |");
+    println!("|---|---:|---:|---:|---:|");
+    for k in 0..6 {
+        if st[0][0][k] + st[1][0][k] + st[0][1][k] + st[1][1][k] > 0 {
+            println!("| {} | {} | {} | {} | {} |", names[k], st[0][0][k], st[1][0][k], st[0][1][k], st[1][1][k]);
+        }
+    }
+    // the corpora: every transform of every base, and the negatives
+    for (name, label) in [("chain.bin", "the chain's real-base corpus (each work under the twenty transforms)"), ("corpus.bin", "the synthetic corpus")] {
+        let path = format!("{dir}/{name}");
+        if !std::path::Path::new(&path).exists() {
+            continue;
+        }
+        let recs = load(&path);
+        let cs: Vec<Prepared> = recs.iter().map(|r| Prepared::new(&r.t1, Some(&r.t2)).unwrap()).collect();
+        let mut at = HashMap::new();
+        for (i, r) in recs.iter().enumerate() {
+            if r.base >= 0 {
+                at.insert((r.base, r.tf), i);
+            }
+        }
+        let nb = recs.iter().map(|r| r.base).max().unwrap_or(-1) + 1;
+        let dist: Vec<usize> = (0..recs.len()).filter(|&i| recs[i].base < 0).collect();
+        let ev = &dist[dist.len() / 2..];
+        println!("\nOn {label}: comparator 42's states of each base against each transform of it (Copy includes Identical), CAL-004 → CAL-007.\n");
+        println!("| transform | Copy | Suspected | Related | Unrelated |");
+        println!("|---|---:|---:|---:|---:|");
+        let mut tot = [[0usize; 6]; 2];
+        let mut demoted = 0usize;
+        for t in 1..TRANSFORMS.len() as i32 {
+            let mut c = [[0usize; 6]; 2];
+            for b in 0..nb {
+                let (i, j) = (at[&(b, 0)], at[&(b, t)]);
+                let x = judge(&cs[i], &cs[j], &p4).0.clamp(0, 5) as usize;
+                let y = judge(&cs[i], &cs[j], &p7).0.clamp(0, 5) as usize;
+                c[0][x] += 1;
+                c[1][y] += 1;
+                demoted += (x != y) as usize;
+            }
+            let f = |k: usize| -> String { if c[0][k] == c[1][k] { c[0][k].to_string() } else { format!("{} → {}", c[0][k], c[1][k]) } };
+            let cp = |p: usize| c[p][3] + c[p][4];
+            let copy = if cp(0) == cp(1) { cp(0).to_string() } else { format!("{} → {}", cp(0), cp(1)) };
+            println!("| {} | {copy} | {} | {} | {} |", TRANSFORMS[t as usize], f(2), f(1), f(0));
+            for p in 0..2 {
+                for k in 0..6 {
+                    tot[p][k] += c[p][k];
+                }
+            }
+        }
+        let ge = |p: usize| tot[p][2] + tot[p][3] + tot[p][4];
+        println!("\nAll {} transformed copies: Copy {} → {}; Suspected or above {} → {} ({demoted} pairs change state, every one Suspected → Related).", tot[0].iter().sum::<usize>(), tot[0][3] + tot[0][4], tot[1][3] + tot[1][4], ge(0), ge(1));
+        // negatives: every pair of bases (synthetic: same-generator works) and
+        // each base against 24 evaluation distractors
+        let mut neg = [[0usize; 6]; 2];
+        let mut nn = 0usize;
+        for b in 0..nb {
+            let i = at[&(b, 0)];
+            let mut others: Vec<usize> = (0..24).map(|k| ev[(b as usize * 97 + k * 331) % ev.len()]).collect();
+            if name == "corpus.bin" {
+                others.extend((b + 1..nb).map(|b2| at[&(b2, 0)]));
+            }
+            for &j in others.iter() {
+                neg[0][judge(&cs[i], &cs[j], &p4).0.clamp(0, 5) as usize] += 1;
+                neg[1][judge(&cs[i], &cs[j], &p7).0.clamp(0, 5) as usize] += 1;
+                nn += 1;
+            }
+        }
+        println!("Unrelated pairs ({nn}: each base against 24 distractors{}): Suspected {} → {}, Copy {} → {}, Related {} → {}.", if name == "corpus.bin" { " and every other base" } else { "" }, neg[0][2], neg[1][2], neg[0][3] + neg[0][4], neg[1][3] + neg[1][4], neg[0][1], neg[1][1]);
+    }
+    if bar == p7.thresholds[2] as i64 {
+        let out = sarg(args, "--out", "../docs/calibration/CAL-007-PROVISIONAL.pcal");
+        write_artefact(&out, &p7.encode());
+        println!("\nwrote {out}: CAL-007-PROVISIONAL, {} bytes, calibration_profile_id {}", p7.encode().len(), paph::sha256::hex(&p7.id()));
+    } else {
+        println!("\nthe fitted bar {bar} is not CAL-007's {}: a fit on another snapshot is another profile — nothing written", p7.thresholds[2]);
+    }
+}
+
+/// `sibench xtrace`: the cascade's geometry tier by tier (`XCtx::trace`) on
+/// every query between the chain's works and on every copy query of the
+/// real-base and synthetic corpora, under X2's schedule bound to CAL-007, with
+/// XRank's state and comparator 42's: what an exit from the anchor expansion
+/// would have to know.  TSV under target/calib/.
+fn cmd_xtrace(args: &[String], dir: &str) {
+    let base = Profile::cal007();
+    let xb = XBound::new(base.clone(), XProfile::x2_for(&base));
+    let bcfg = paph::v4::bind(&Config::default(), &base);
+    let cfg = Config::default();
+    let out_dir = sarg(args, "--out", "target/calib");
+    std::fs::create_dir_all(&out_dir).unwrap();
+    let (mut ctx, mut rs) = (XCtx::new(), RankScratch::new());
+    let opts = XRankOptions::default();
+    let mut o = String::from("kind\tq\tt\ttf\tx_state\tx_exec\tc42\trows\troute_local\troute_band\troute_global\troute_class\ttrace\n");
+    // (kind, XRank's state, the trace) of every query, for the summary
+    let mut all: Vec<(String, i32, Vec<[i64; 7]>)> = Vec::new();
+    let mut run = |kind: &str, tf: &str, q: &XPrepared, t: &XPrepared, qi: usize, ti: usize, c42: i32, o: &mut String| {
+        let mut out = vec![0i32; XRANK_FIELDS];
+        ctx.trace.clear();
+        xrank(q, &[Some(t)], &cfg, &xb, &opts, &mut ctx, &mut rs, &mut out);
+        all.push((kind.to_string(), out[0], ctx.trace.clone()));
+        let tr: Vec<String> = ctx.trace.iter().map(|e| e.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(",")).collect();
+        o.push_str(&format!("{kind}\t{qi}\t{ti}\t{tf}\t{}\t{}\t{c42}\t{}\t{}\t{}\t{}\t{}\t{}\n", out[0], out[1], out[9], out[3], out[4], out[5], out[6], tr.join(";")));
+    };
+    let c42 = |pa: &Prepared, pb: &Prepared| -> i32 {
+        let swapped = canon_swapped(pa, pb);
+        let (ca, cb) = if swapped { (pb, pa) } else { (pa, pb) };
+        state_code(compare_in(&mut PairCtx::new(ca, cb), swapped, &bcfg, &base, Reading::Lean).base.verdict)
+    };
+    let t0 = Instant::now();
+    let src = sarg(args, "--chain", "target/chain-corpus");
+    let (works, _) = load_chain(&src);
+    let rot = RotCache::new(&pattern());
+    let fps: Vec<_> = works.iter().map(|w| hash(&w.img.px, w.img.w, w.img.h, &cfg, &rot)).collect();
+    let sides: Vec<Prepared> = fps.iter().map(|f| Prepared::new(&f.t1, Some(&f.t2)).unwrap()).collect();
+    let xs: Vec<XPrepared> = fps.iter().map(|f| XPrepared::new(Prepared::new(&f.t1, Some(&f.t2)).unwrap(), &xb)).collect();
+    for i in 0..works.len() {
+        for j in i + 1..works.len() {
+            let s = c42(&sides[i], &sides[j]);
+            let kind = if works[i].author == works[j].author { "chain-same" } else { "chain" };
+            run(kind, "-", &xs[i], &xs[j], i, j, s, &mut o);
+            run(kind, "-", &xs[j], &xs[i], j, i, s, &mut o);
+        }
+    }
+    eprintln!("xtrace: chain pairs ({:.1} s)", t0.elapsed().as_secs_f64());
+    for name in ["chain.bin", "corpus.bin"] {
+        let path = format!("{dir}/{name}");
+        if !std::path::Path::new(&path).exists() {
+            continue;
+        }
+        let recs = load(&path);
+        let mut at = HashMap::new();
+        for (i, r) in recs.iter().enumerate() {
+            if r.base >= 0 {
+                at.insert((r.base, r.tf), i);
+            }
+        }
+        let nb = recs.iter().map(|r| r.base).max().unwrap_or(-1) + 1;
+        let kind = if name == "chain.bin" { "realbase" } else { "synth" };
+        for b in 0..nb {
+            let i = at[&(b, 0)];
+            let pi = Prepared::new(&recs[i].t1, Some(&recs[i].t2)).unwrap();
+            let xi = XPrepared::new(Prepared::new(&recs[i].t1, Some(&recs[i].t2)).unwrap(), &xb);
+            for t in 1..TRANSFORMS.len() as i32 {
+                let j = at[&(b, t)];
+                let pj = Prepared::new(&recs[j].t1, Some(&recs[j].t2)).unwrap();
+                let xj = XPrepared::new(Prepared::new(&recs[j].t1, Some(&recs[j].t2)).unwrap(), &xb);
+                let s = c42(&pi, &pj);
+                run(kind, TRANSFORMS[t as usize], &xj, &xi, j, i, s, &mut o);
+                run(kind, TRANSFORMS[t as usize], &xi, &xj, i, j, s, &mut o);
+            }
+        }
+        eprintln!("xtrace: {path} ({:.1} s)", t0.elapsed().as_secs_f64());
+    }
+    std::fs::write(format!("{out_dir}/xtrace.tsv"), o).unwrap();
+    // the summary: where the geometric evidence appears, and what an exit
+    // from the expansion after a flat tier would cost
+    let model = |e: &[i64; 7]| e[4] > 0;
+    for kind in ["chain", "realbase", "synth"] {
+        let q: Vec<&(String, i32, Vec<[i64; 7]>)> = all.iter().filter(|r| r.0 == kind && !r.2.is_empty()).collect();
+        let late = q.iter().filter(|r| !model(&r.2[0]) && r.2.iter().any(model)).count();
+        let late0 = q.iter().filter(|r| !model(&r.2[0]) && r.2[0][6] == 0 && r.2.iter().any(model)).count();
+        let anym = q.iter().filter(|r| r.2.iter().any(model)).count();
+        let full = q.iter().filter(|r| r.2.len() == 4).count();
+        println!("{kind}: {} queries reached the cascade's geometry; {anym} found a model at some tier, {late} only after the anchor tier ({late0} with no weak signal there either); {full} measured all four tiers.", q.len());
+    }
+    println!("\nAn exit after anchor tier k when no tier so far found a model and the weak signal stayed at or below w: the queries between two authors' works it stops, the rows it saves them, and the copy queries (XRank Suspected or Copy) whose model or weak signal appears only on a later tier.\n");
+    println!("| exit after | w | unrelated stopped | rows saved a query | copies at risk |");
+    println!("|---|---:|---:|---:|---:|");
+    for k in 0..3usize {
+        for w in [0i64, 3, 5] {
+            let (mut stopped, mut saved, mut nun, mut risk) = (0usize, 0i64, 0usize, 0usize);
+            for r in all.iter() {
+                if r.2.is_empty() {
+                    continue;
+                }
+                if r.0 == "chain" {
+                    nun += 1;
+                }
+                if r.2.len() <= k + 1 {
+                    continue;
+                }
+                let flat = r.2[..=k].iter().all(|e| !model(e) && e[6] <= w);
+                if !flat {
+                    continue;
+                }
+                let later = r.2[k + 1..].iter().any(|e| model(e) || e[6] > w);
+                if r.0 == "chain" {
+                    stopped += 1;
+                    saved += r.2[r.2.len() - 1][0] - r.2[k][0];
+                } else if (r.0 == "realbase" || r.0 == "synth") && later && (2..=4).contains(&r.1) {
+                    risk += 1;
+                }
+            }
+            println!("| tier {} ({} rows) | {w} | {stopped} of {nun} | {:.0} | {risk} |", k, xb.xp.anchors[k], saved as f64 / nun.max(1) as f64);
+        }
+    }
+}
+
+/// `sibench xtime`: where XRank's time goes on the chain's unrelated pairs —
+/// the whole query, the sparse scan of every row, the pools and one
+/// measurement on every row, one measurement per anchor tier, and the
+/// structural channels — under X2's schedule bound to CAL-004 and to CAL-007.
+fn cmd_xtime(args: &[String]) {
+    use paph::x::geom::{measure, Frames};
+    use paph::x::structural::Structural;
+    let src = sarg(args, "--chain", "target/chain-corpus");
+    let (works, _) = load_chain(&src);
+    let cfg = Config::default();
+    let rot = RotCache::new(&pattern());
+    let fps: Vec<_> = works.iter().map(|w| hash(&w.img.px, w.img.w, w.img.h, &cfg, &rot)).collect();
+    let n = works.len();
+    let step = arg(args, "--step", 3);
+    for base in [Profile::cal004(), Profile::cal007()] {
+        let xb = XBound::new(base.clone(), XProfile::x2_for(&base));
+        let bcfg = xb.bind(&cfg);
+        let xs: Vec<XPrepared> = fps.iter().map(|f| XPrepared::new(Prepared::new(&f.t1, Some(&f.t2)).unwrap(), &xb)).collect();
+        let (mut ctx, mut rs) = (XCtx::new(), RankScratch::new());
+        let opts = XRankOptions::default();
+        let (mut nq, mut t_all, mut t_scan, mut t_meas_full, mut t_meas_tiers, mut t_struct, mut t_exh) = (0usize, 0f64, 0f64, 0f64, 0f64, 0f64, 0f64);
+        let (mut st_rows, mut st_touched, mut st_ham, mut st_dense) = (0u64, 0u64, 0u64, 0u64);
+        let mut d0 = vec![0u8; 128 * 128];
+        for i in (0..n).step_by(step) {
+            for j in 0..n {
+                if i == j || works[i].author == works[j].author {
+                    continue;
+                }
+                let (q, t) = (&xs[i], &xs[j]);
+                let mut out = vec![0i32; XRANK_FIELDS];
+                let t0 = Instant::now();
+                xrank(q, &[Some(t)], &cfg, &xb, &opts, &mut ctx, &mut rs, &mut out);
+                t_all += t0.elapsed().as_secs_f64();
+                nq += 1;
+                let swapped = canon_swapped(&q.p, &t.p);
+                let (ca, cb) = if swapped { (t, q) } else { (q, t) };
+                let t0 = Instant::now();
+                ctx.m.begin(ca, cb);
+                ctx.m.scan_rows(ca, cb, &xb.xp, 512);
+                t_scan += t0.elapsed().as_secs_f64();
+                st_rows += ctx.m.stats.rows as u64;
+                st_touched += ctx.m.stats.touched;
+                st_ham += ctx.m.stats.hammings;
+                st_dense += ctx.m.stats.dense_rows as u64;
+                let am = paph::compare::mirror_side(&ca.p.kp, ca.p.t1_xmax());
+                let (mda, mdb) = (ca.p.t1_max_dim(), cb.p.t1_max_dim());
+                let t0 = Instant::now();
+                ctx.m.pools(ca, cb, &xb.base);
+                let f = Frames { a: &ca.p.kp, am: &am, b: &cb.p.kp, mda, mdb };
+                std::hint::black_box(measure(&f, &ctx.m.pd, &ctx.m.pm, &bcfg, &xb.base, &mut ctx.g));
+                t_meas_full += t0.elapsed().as_secs_f64();
+                // one pools + measurement per tier, the scan between tiers excluded
+                ctx.m.begin(ca, cb);
+                for &tier in xb.xp.anchors.iter() {
+                    ctx.m.scan_rows(ca, cb, &xb.xp, tier as usize);
+                    let t0 = Instant::now();
+                    ctx.m.pools(ca, cb, &xb.base);
+                    let f = Frames { a: &ca.p.kp, am: &am, b: &cb.p.kp, mda, mdb };
+                    std::hint::black_box(measure(&f, &ctx.m.pd, &ctx.m.pm, &bcfg, &xb.base, &mut ctx.g));
+                    t_meas_tiers += t0.elapsed().as_secs_f64();
+                }
+                let t0 = Instant::now();
+                let mut s = Structural::new(ca, cb, &xb.base);
+                for k in 0..7 {
+                    s.compute(k, ca, cb, &xb.base, &mut d0);
+                }
+                t_struct += t0.elapsed().as_secs_f64();
+                // comparator 42's exhaustive scans of the same pair, both hypotheses
+                let t0 = Instant::now();
+                let mut pc = PairCtx::new(&ca.p, &cb.p);
+                std::hint::black_box(pc.direct());
+                std::hint::black_box(pc.mirror());
+                t_exh += t0.elapsed().as_secs_f64();
+            }
+        }
+        let us = |t: f64| 1e6 * t / nq.max(1) as f64;
+        println!("  the scan: {:.0} rows a query, {:.1} candidates nominated a row (both hypotheses), {:.1} distances a row, {:.2}% of rows dense", st_rows as f64 / nq.max(1) as f64, st_touched as f64 / st_rows.max(1) as f64, st_ham as f64 / st_rows.max(1) as f64, 100.0 * st_dense as f64 / st_rows.max(1) as f64);
+        println!("{} ({} queries between two authors' works): XRank {:.0} µs a query; the sparse scan of every row {:.0} µs (comparator 42's exhaustive scans, both hypotheses: {:.0} µs); pools and one measurement on every row {:.0} µs; one per anchor tier (four) {:.0} µs; every structural channel exactly {:.0} µs.", base.name_str(), nq, us(t_all), us(t_scan), us(t_exh), us(t_meas_full), us(t_meas_tiers), us(t_struct));
+    }
+}
+
+/// The X profile a command runs under: the shipped X3 (bound to CAL-007),
+/// 1.1's X2 with `--x2`, or 1.0's X1 with `--x1` (both bound to CAL-004).
 fn xbound_for(args: &[String]) -> XBound {
     if args.iter().any(|a| a == "--x1") {
         return XBound::x1();
     }
-    let mut xp = XProfile::x2();
+    if args.iter().any(|a| a == "--x2") {
+        return XBound::x2();
+    }
+    let mut xp = XProfile::x3();
     // experiments: --bars l,b,g (route lower bars), --nodoor
     if let Some(i) = args.iter().position(|a| a == "--bars") {
         let v: Vec<i32> = args[i + 1].split(',').map(|x| x.parse().unwrap()).collect();
@@ -2211,10 +2748,49 @@ fn xbound_for(args: &[String]) -> XBound {
     if args.iter().any(|a| a == "--nodoor") {
         xp.gate_door = 0;
     }
-    XBound::new(Profile::cal004(), xp)
+    XBound::new(Profile::cal007(), xp)
+}
+
+/// `--wire 3` hashes a corpus in 1.0–1.1's format (the default is 4).
+fn wire_arg(args: &[String]) -> u8 {
+    match sarg(args, "--wire", "4").as_str() {
+        "3" => paph::config::WIRE_3,
+        "4" => paph::config::WIRE_4,
+        w => panic!("--wire {w}: the formats are 3 and 4"),
+    }
+}
+
+/// Set when an artefact was not written (`write_artefact`); the process then
+/// exits 2 after its report.
+static REFUSED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Write a fitted artefact.  One under docs/calibration is a committed
+/// profile, embedded by the crate: a refit may rewrite it with the same bytes
+/// — which is how the logs show a refit reproduces it — and never replace it
+/// with others (a fit on another corpus, format or profile is another
+/// profile; `--out` writes it elsewhere).
+fn write_artefact(path: &str, bytes: &[u8]) -> bool {
+    if path.contains("docs/calibration/") {
+        if let Ok(old) = std::fs::read(path) {
+            if old != bytes {
+                eprintln!("NOT WRITTEN: {path} is committed and these {} bytes (sha256 {}) differ from it; pass --out to write them elsewhere", bytes.len(), paph::sha256::hex(&paph::sha256::sha256(bytes)));
+                REFUSED.store(true, std::sync::atomic::Ordering::Relaxed);
+                return false;
+            }
+        }
+    }
+    std::fs::write(path, bytes).expect("write artefact");
+    true
 }
 
 fn main() {
+    run();
+    if REFUSED.load(std::sync::atomic::Ordering::Relaxed) {
+        std::process::exit(2);
+    }
+}
+
+fn run() {
     let args: Vec<String> = std::env::args().collect();
     let dir = sarg(&args, "--dir", "target/si-corpus");
     let cfile = format!("{dir}/{}", sarg(&args, "--corpus", "corpus.bin"));
@@ -2228,6 +2804,7 @@ fn main() {
             let src = sarg(&args, "--chain", "target/chain-corpus");
             let nd = arg(&args, "--distractors", 8000);
             let name = sarg(&args, "--out", "chain.bin");
+            let wire = wire_arg(&args);
             std::fs::create_dir_all(&dir).unwrap();
             let (works, dups) = load_chain(&src);
             let keep: Vec<usize> = (0..works.len()).filter(|&i| works[i].img.w * works[i].img.h <= CHAIN_BASE_MAX_PIXELS).collect();
@@ -2252,18 +2829,19 @@ fn main() {
             }
             let t0 = Instant::now();
             let n = jobs.len();
-            let recs = hash_all(jobs);
+            let recs = hash_all(jobs, wire);
             save(&format!("{dir}/{name}"), &recs);
             // which artwork each base is, for the reports that name pairs
             let map: String = keep.iter().enumerate().map(|(b, &i)| format!("{b}\t{}\t{}\t{}\t{}\n", works[i].author, works[i].permlink, works[i].created, works[i].sha)).collect();
             std::fs::write(format!("{dir}/{name}.bases.tsv"), map).unwrap();
-            println!("{} ({}): {} artworks, {} byte-identical re-uploads left out, {} over {} px left out as bases; hashed {n} works ({nb} bases × {} variants + {nd} synthetic distractors) in {:.1} s → {dir}/{name}", src, chain_snapshot(&src), works.len() + dups, dups, works.len() - nb, CHAIN_BASE_MAX_PIXELS, TRANSFORMS.len(), t0.elapsed().as_secs_f64());
+            println!("{} ({}): {} artworks, {} byte-identical re-uploads left out, {} over {} px left out as bases; hashed {n} works ({nb} bases × {} variants + {nd} synthetic distractors){} in {:.1} s → {dir}/{name}", src, chain_snapshot(&src), works.len() + dups, dups, works.len() - nb, CHAIN_BASE_MAX_PIXELS, TRANSFORMS.len(), if wire == 3 { " in wire 3" } else { "" }, t0.elapsed().as_secs_f64());
         }
         "corpus" => {
             let nb = arg(&args, "--bases", 120);
             let nd = arg(&args, "--distractors", 8000);
             let from = arg(&args, "--from", 0);
             let name = sarg(&args, "--out", "corpus.bin");
+            let wire = wire_arg(&args);
             std::fs::create_dir_all(&dir).unwrap();
             let mut jobs: Vec<(i32, i32, Box<dyn Fn() -> Img + Send + Sync>)> = Vec::new();
             for i in 0..nb {
@@ -2276,14 +2854,17 @@ fn main() {
             }
             let t0 = Instant::now();
             let n = jobs.len();
-            let recs = hash_all(jobs);
+            let recs = hash_all(jobs, wire);
             save(&format!("{dir}/{name}"), &recs);
-            println!("hashed {n} works ({nb} bases × {} variants + {nd} distractors) in {:.1} s → {dir}/{name}", TRANSFORMS.len(), t0.elapsed().as_secs_f64());
+            println!("hashed {n} works ({nb} bases × {} variants + {nd} distractors){} in {:.1} s → {dir}/{name}", TRANSFORMS.len(), if wire == 3 { " in wire 3" } else { "" }, t0.elapsed().as_secs_f64());
         }
         "fit" => {
             let xb = xbound_for(&args);
             let c = Corpus::open(&cfile, &xb);
-            let out = sarg(&args, "--out", &format!("../docs/calibration/{}.psi", si_name_for(&xb)));
+            // SI1's and SI2's fits are the artefacts in docs/calibration; a
+            // synthetic fit bound to X3 is no shipped profile and stays here
+            let name = si_name_for(&xb);
+            let out = sarg(&args, "--out", &if name.starts_with("SI-") { format!("{dir}/{name}.psi") } else { format!("../docs/calibration/{name}.psi") });
             cmd_fit(&c, &xb, &out);
         }
         "lost" => {
@@ -2294,7 +2875,7 @@ fn main() {
             let xb = xbound_for(&args);
             let c = Corpus::open(&cfile, &xb);
             let cfg = Config::default();
-            let base = Profile::cal004();
+            let base = xb.base.clone();
             let bcfg = paph::v4::bind(&cfg, &base);
             let mut ctx = XCtx::new();
             let mut rs = RankScratch::new();
@@ -2382,14 +2963,39 @@ fn main() {
             let c = Corpus::open(&cfile, &xb);
             cmd_doorprof(&c, &xb, args.iter().any(|a| a == "--real"));
         }
+        "wire" => println!("{}", file_wire(args.get(2).map(|s| s.as_str()).unwrap_or(&cfile))),
+        "dump" => {
+            // one corpus work's wires as files, for xcli: synthetic bases
+            // only (a chain corpus's bases are the chain's artworks, which
+            // stay out of every file but the corpus itself)
+            assert!(!std::path::Path::new(&format!("{cfile}.bases.tsv")).exists(), "dump reads the synthetic corpus only");
+            let b = arg(&args, "--base", 0) as i32;
+            let tf = sarg(&args, "--tf", "base");
+            let t = TRANSFORMS.iter().position(|&x| x == tf).unwrap_or_else(|| panic!("--tf {tf}: one of {TRANSFORMS:?}")) as i32;
+            let out = sarg(&args, "--out", "target/dump");
+            let r = load(&cfile).into_iter().find(|r| r.base == b && r.tf == t).unwrap_or_else(|| panic!("no work {b} / {tf} in {cfile}"));
+            std::fs::create_dir_all(&out).unwrap();
+            let stem = format!("{out}/{b}-{tf}");
+            std::fs::write(format!("{stem}.t1"), &r.t1).unwrap();
+            std::fs::write(format!("{stem}.t2"), &r.t2).unwrap();
+            println!("{stem}.t1 ({} B, wire {}), {stem}.t2 ({} B)", r.t1.len(), r.t1[4], r.t2.len());
+        }
         "chain" => cmd_chain(&sarg(&args, "--chain", "target/chain-corpus")),
+        "calib" => cmd_calib(&args, &dir),
+        "calfit" => cmd_calfit(&args, &dir),
+        "xtrace" => cmd_xtrace(&args, &dir),
+        "xtime" => cmd_xtime(&args),
         "chainfit" => {
+            // the chain's corpus unless told otherwise, and the profile named
+            // after the X profile it is bound to: SI4 under X3, SI3 under X2
+            // (each committed: `write_artefact` rewrites one only with its own
+            // bytes); a fit bound to X1 is no shipped profile and stays here
             let xb = xbound_for(&args);
-            let c = Corpus::open(&cfile, &xb);
-            // the artefact is named after the profile: a fit named otherwise never
-            // lands on SI3's file (the crate embeds that one)
-            let name = sarg(&args, "--name", "SI3-PROVISIONAL");
-            cmd_chainfit(&c, &xb, &sarg(&args, "--out", &format!("../docs/calibration/{name}.psi")), &name);
+            let c = Corpus::open(&format!("{dir}/{}", sarg(&args, "--corpus", "chain.bin")), &xb);
+            let named = if xb.xid == XProfile::x2().id() { "SI3-PROVISIONAL" } else if xb.xid == XProfile::x1().id() { "SI-CHAIN-X1" } else { "SI4-PROVISIONAL" };
+            let name = sarg(&args, "--name", named);
+            let out = if name.starts_with("SI-") { format!("{dir}/{name}.psi") } else { format!("../docs/calibration/{name}.psi") };
+            cmd_chainfit(&c, &xb, &sarg(&args, "--out", &out), &name);
         }
         "route" => {
             let xb = xbound_for(&args);

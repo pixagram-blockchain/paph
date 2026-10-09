@@ -572,7 +572,7 @@ fn read_shapes(t: &Tier1) -> Vec<Shape> {
             Shape {
                 area: u32::from_le_bytes([s[o], s[o + 1], s[o + 2], s[o + 3]]),
                 per: u16::from_le_bytes([s[o + 4], s[o + 5]]) as i64,
-                aspect: u16::from_le_bytes([s[o + 6], s[o + 7]]) as i64,
+                aspect: t.shape_aspect(&s[o..o + 41]),
                 holes: s[o + 8] as i64,
                 radial,
             }
@@ -1603,6 +1603,9 @@ pub fn compare(
     let b = Prepared::new(b_t1, b_t2)?;
     if let Some(e) = b.t2_error {
         return Err(e);
+    }
+    if a.t1.version != b.t1.version {
+        return Err(crate::wire::E_WIRE_MISMATCH);
     }
     Ok(compare_prepared(&a, &b, cfg))
 }

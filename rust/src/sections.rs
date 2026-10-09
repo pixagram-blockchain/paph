@@ -4,7 +4,18 @@
 //! tables.  Two independent implementations must be able to agree on all
 //! 3952 of them; `test/parity.js` checks that against the JavaScript engine.
 
-use crate::config::{clamp, idiv, Config};
+//!
+//! Wire 4 (docs/SPEC-W4-paph-wire4.md) changes how five things are sampled,
+//! never what a section means: area-majority cells cover the pixels their
+//! edges cut (`area_majority`, closed), the DCT rounds once (`dct2_exact`),
+//! regions are ordered by keys a symmetry cannot move, radial profiles are
+//! cast from the exact centroid to the component's outer extent
+//! (`rays_exact`), and the silhouette's moments are exact.  Each makes the
+//! section of a mirrored or quarter-turned image the mirrored or
+//! quarter-turned section, on canvases of any size.  Wire 3's code paths are
+//! kept verbatim behind `wire`.
+
+use crate::config::{clamp, idiv, Config, WIRE_4};
 use crate::front::Indexed;
 use crate::simd::{median_mask, Cells};
 use crate::tables::*;
@@ -20,7 +31,7 @@ pub const RONE: i64 = 1 << R;
 
 // ---------------------------------------------------------------- DCT
 
-fn dct2(src: &[i32], n: usize) -> Vec<i32> {
+pub(crate) fn dct2(src: &[i32], n: usize) -> Vec<i32> {
     let t = cos_table(n);
     let mut tmp = vec![0i64; n * n];
     let mut out = vec![0i32; n * n];
@@ -40,6 +51,45 @@ fn dct2(src: &[i32], n: usize) -> Vec<i32> {
                 s += tmp[j * n + u] * t[v * n + j] as i64;
             }
             out[v * n + u] = ((s + (QONE >> 1)) >> Q) as i32;
+        }
+    }
+    out
+}
+
+/// Wire 4 — the same transform rounded ONCE, at the end, half away from
+/// zero: `out[v][u] = round(Σ_j Σ_i src[j][i]·t[u][i]·t[v][j] / 2^28)`.
+///
+/// Two rounded passes are not equivariant: a quarter turn swaps which pass
+/// runs first, and `(s + ½) >> Q` is not odd-symmetric, so a flip that
+/// negates a coefficient can move it by one.  The tables are exactly
+/// odd/even symmetric (`t[u][n−1−i] = (−1)^u · t[u][i]`, checked by a
+/// test), the double sum is exact, and the rounding is odd: a flip negates
+/// the coefficients of odd frequency exactly and a transpose exchanges u and
+/// v exactly.  The sums stay below 2^44, so the JavaScript engine computes
+/// the same integers in doubles.
+pub(crate) fn dct2_exact(src: &[i32], n: usize) -> Vec<i32> {
+    let t = cos_table(n);
+    // row[j][u] = Σ_i src[j][i]·t[u][i], unrounded (|row| < 2^26)
+    let mut row = vec![0i64; n * n];
+    for j in 0..n {
+        for u in 0..n {
+            let mut s = 0i64;
+            for i in 0..n {
+                s += src[j * n + i] as i64 * t[u * n + i] as i64;
+            }
+            row[j * n + u] = s;
+        }
+    }
+    let half = 1i64 << (2 * Q - 1);
+    let mut out = vec![0i32; n * n];
+    for u in 0..n {
+        for v in 0..n {
+            let mut s = 0i64;
+            for j in 0..n {
+                s += row[j * n + u] * t[v * n + j] as i64;
+            }
+            let m = (s.abs() + half) >> (2 * Q);
+            out[v * n + u] = (if s < 0 { -m } else { m }) as i32;
         }
     }
     out
@@ -103,8 +153,9 @@ fn quantise_block(co: &[i32], bits: usize, keep_dc: bool, bytes: &mut [u8], off:
 
 /// 256 B: one 16x16 block at 2 bits, four 8x8 at 2 bits, sixteen 4x4 at 4 bits.
 /// DC is ALWAYS dropped (SPEC-003 §6.3) so the index bucket cannot degenerate
-/// into "is this picture bright".
-pub fn hierarchical_dct(thumb: &[i32]) -> Vec<u8> {
+/// into "is this picture bright".  `wire` 4 rounds each transform once.
+pub fn hierarchical_dct(thumb: &[i32], wire: u8) -> Vec<u8> {
+    let dct2 = if wire >= WIRE_4 { dct2_exact } else { dct2 };
     let mut out = vec![0u8; 256];
     quantise_block(&dct2(thumb, 16), 2, false, &mut out, 0);
     let mut off = 64usize;
@@ -135,7 +186,27 @@ pub fn hierarchical_dct(thumb: &[i32]) -> Vec<u8> {
 
 // ------------------------------------------------------- area majority
 
-pub fn area_majority(im: &Indexed, nw: usize, nh: usize) -> Vec<i32> {
+/// The pixel span `[x0, x1)` of cell `i` of `n` across `w` pixels.  Wire 3
+/// cuts at ⌊i·w/n⌋ and gives each edge pixel to the cell on its right, which
+/// a flip moves unless n divides w.  Wire 4's cells are CLOSED: from
+/// ⌊i·w/n⌋ to ⌈(i+1)·w/n⌉, so a pixel an edge cuts belongs to both cells.
+/// A flip maps cell i's span onto cell n−1−i's exactly (w − ⌈(i+1)w/n⌉ =
+/// ⌊(n−1−i)w/n⌋), and where n divides w the spans are wire 3's.
+#[inline]
+pub fn cell_span(i: usize, w: usize, n: usize, closed: bool) -> (usize, usize) {
+    let x0 = idiv(i as i64 * w as i64, n as i64) as usize;
+    let mut x1 = if closed {
+        idiv((i as i64 + 1) * w as i64 + n as i64 - 1, n as i64) as usize
+    } else {
+        idiv((i as i64 + 1) * w as i64, n as i64) as usize
+    };
+    if x1 <= x0 {
+        x1 = x0 + 1;
+    }
+    (x0, x1)
+}
+
+pub fn area_majority(im: &Indexed, nw: usize, nh: usize, closed: bool) -> Vec<i32> {
     let (w, h) = (im.w, im.h);
     let mut out = vec![0i32; nw * nh];
     // slot 0 = transparent, slot v = palette entry v - 1
@@ -149,20 +220,12 @@ pub fn area_majority(im: &Indexed, nw: usize, nh: usize) -> Vec<i32> {
     let rank = |v: usize| -> i32 { if v == 0 { -1 } else { im.pal[v - 1].lum_order } };
     let xs: Vec<(usize, usize)> = (0..nw)
         .map(|i| {
-            let x0 = idiv(i as i64 * w as i64, nw as i64) as usize;
-            let mut x1 = idiv((i as i64 + 1) * w as i64, nw as i64) as usize;
-            if x1 <= x0 {
-                x1 = x0 + 1;
-            }
+            let (x0, x1) = cell_span(i, w, nw, closed);
             (x0, x1.min(w))
         })
         .collect();
     for j in 0..nh {
-        let y0 = idiv(j as i64 * h as i64, nh as i64) as usize;
-        let mut y1 = idiv((j as i64 + 1) * h as i64, nh as i64) as usize;
-        if y1 <= y0 {
-            y1 = y0 + 1;
-        }
+        let (y0, y1) = cell_span(j, h, nh, closed);
         for i in 0..nw {
             let (x0, x1) = xs[i];
             for y in y0..y1.min(h) {
@@ -194,9 +257,9 @@ pub fn area_majority(im: &Indexed, nw: usize, nh: usize) -> Vec<i32> {
 /// 16x16 luminance thumbnail.  Cells with no opaque pixel take the MEDIAN
 /// opaque luminance, not 0: filling holes with black manufactures an edge that
 /// the same sprite composited on a host would not have, and the two maps of one
-/// drawing then share almost nothing.
-pub fn thumbnail16(im: &Indexed) -> Vec<i32> {
-    let m = area_majority(im, 16, 16);
+/// drawing then share almost nothing.  Wire 4's cells are closed.
+pub fn thumbnail16(im: &Indexed, wire: u8) -> Vec<i32> {
+    let m = area_majority(im, 16, 16, wire >= WIRE_4);
     let mut lums: Vec<i32> = im.pal.iter().map(|p| p.lum).collect();
     lums.sort_unstable();
     let fill = if lums.is_empty() { 128 } else { lums[lums.len() >> 1] };
@@ -349,6 +412,11 @@ struct Comp {
     area: i64,
     cx: i64,
     cy: i64,
+    /// coordinate sums: the exact centroid is (sx / area, sy / area)
+    sx: i64,
+    sy: i64,
+    /// the first cell the scan met (raster order), which carries its label
+    seed: usize,
     minx: i64,
     maxx: i64,
     miny: i64,
@@ -401,6 +469,9 @@ fn components(lab: &[i8], w: usize, h: usize) -> (Vec<i32>, Vec<Comp>) {
             area,
             cx: idiv(sx, area),
             cy: idiv(sy, area),
+            sx,
+            sy,
+            seed: s,
             minx,
             maxx,
             miny,
@@ -410,21 +481,338 @@ fn components(lab: &[i8], w: usize, h: usize) -> (Vec<i32>, Vec<Comp>) {
     (id, out)
 }
 
+/// Wire 4 — the 32 radial extents of component `cid` of the label map `id`
+/// (`w` wide), cast from its EXACT centroid (sx/area, sy/area).
+///
+/// Ray k's point at step s is the centroid plus s·(RAYC[k], RAYSN[k])/1024,
+/// in coordinates where pixel (i, j) is the closed square of side 1 centred
+/// on (i, j).  The point is inside when EVERY pixel whose square holds it is
+/// in the component — one pixel, two on an edge, four on a corner — and the
+/// extent is the LAST step that is inside, not the first that is not: a
+/// centroid that falls in a hole or between the arms of a shape needs no
+/// stand-in pixel.  The ray stops where it leaves the component's open
+/// bounding box, which it cannot re-enter.
+///
+/// Every quantity is an exact rational, the inside test is symmetric in its
+/// edges, and the tables satisfy RAYC[k+8] = −RAYSN[k], RAYSN[k+8] = RAYC[k]
+/// and RAYC[16−k] = −RAYC[k] (a test checks them): the profile of a mirrored
+/// or quarter-turned component is the profile, permuted.  The arithmetic
+/// stays below 2^38, inside the integers a double holds exactly.
+///
+/// Per axis the point's coordinate plus ½ is kept as q + r/D (D = 2048·area,
+/// 0 ≤ r < D): pixel q, on an edge when r = 0.  A step adds 2·area·RAYC[k]
+/// to r, at most D in magnitude, so one carry restores the range — the same
+/// floor and remainder a division per step would give, without the division.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn rays_exact(id: &[i32], w: usize, cid: i32, area: i64, sx: i64, sy: i64, bbox: (i64, i64, i64, i64), lim: i64) -> [i64; 32] {
+    let (minx, maxx, miny, maxy) = bbox;
+    let area = area.max(1);
+    let d = 2048 * area;
+    // the centroid plus ½, as q + r/D: its integer part, then the remainder
+    // 2048·(sum mod area) + 1024·area, which is below 1.5·D
+    let start = |sum: i64| -> (i64, i64) {
+        let f = 2048 * sum.rem_euclid(area) + 1024 * area;
+        (sum.div_euclid(area) + f / d, f % d)
+    };
+    let (qx0, rx0) = start(sx);
+    let (qy0, ry0) = start(sy);
+    // one step: r += delta (|delta| ≤ D), then a single carry
+    #[inline(always)]
+    fn step(q: &mut i64, r: &mut i64, delta: i64, d: i64) {
+        *r += delta;
+        if *r >= d {
+            *r -= d;
+            *q += 1;
+        } else if *r < 0 {
+            *r += d;
+            *q -= 1;
+        }
+    }
+    let mut rad = [0i64; 32];
+    for k in 0..32 {
+        let mut last = 0i64;
+        let (dx, dy) = (2 * area * RAYC[k] as i64, 2 * area * RAYSN[k] as i64);
+        let (mut ix, mut rx, mut iy, mut ry) = (qx0, rx0, qy0, ry0);
+        for s in 1..=lim {
+            step(&mut ix, &mut rx, dx, d);
+            step(&mut iy, &mut ry, dy, d);
+            let (ex, ey) = (rx == 0, ry == 0);
+            // inside the open box: min < c + 1/2 < max + 1
+            if ix > maxx || ix < minx || (ix == minx && ex) || iy > maxy || iy < miny || (iy == miny && ey) {
+                break;
+            }
+            let xs = if ex { ix - 1 } else { ix };
+            let ys = if ey { iy - 1 } else { iy };
+            let mut inside = true;
+            'cells: for yy in ys..=iy {
+                for xx in xs..=ix {
+                    if id[yy as usize * w + xx as usize] != cid {
+                        inside = false;
+                        break 'cells;
+                    }
+                }
+            }
+            if inside {
+                last = s;
+            }
+        }
+        rad[k] = last;
+    }
+    rad
+}
+
+/// 4-connected perimeter of every component: cells on the map's border or
+/// with a 4-neighbour in another component (the shapes section's rule).
+fn perimeters(cid: &[i32], w: usize, h: usize, ncomp: usize) -> Vec<i64> {
+    let mut per = vec![0i64; ncomp];
+    for y in 0..h {
+        for x in 0..w {
+            let p = y * w + x;
+            let c = cid[p];
+            if c < 0 {
+                continue;
+            }
+            if x == 0 || y == 0 || x == w - 1 || y == h - 1 || cid[p - 1] != c || cid[p + 1] != c || cid[p - w] != c || cid[p + w] != c {
+                per[c as usize] += 1;
+            }
+        }
+    }
+    per
+}
+
+/// Holes of a component: complement components inside its bounding box that
+/// never touch the box's border.
+fn holes_of(cid: &[i32], w: usize, c: &Comp) -> i64 {
+    let bw = (c.maxx - c.minx + 1) as usize;
+    let bh = (c.maxy - c.miny + 1) as usize;
+    let mut holes = 0i64;
+    let mut seen = vec![0u8; bw * bh];
+    let mut st: Vec<usize> = Vec::new();
+    for y in 0..bh {
+        for x in 0..bw {
+            let q = y * bw + x;
+            if seen[q] != 0 || cid[(y + c.miny as usize) * w + x + c.minx as usize] == c.id {
+                continue;
+            }
+            let mut touch = false;
+            st.clear();
+            st.push(q);
+            seen[q] = 1;
+            while let Some(r) = st.pop() {
+                let rx = r % bw;
+                let ry = r / bw;
+                if rx == 0 || ry == 0 || rx == bw - 1 || ry == bh - 1 {
+                    touch = true;
+                }
+                let nb: [i64; 4] = [
+                    if rx > 0 { r as i64 - 1 } else { -1 },
+                    if rx < bw - 1 { r as i64 + 1 } else { -1 },
+                    if ry > 0 { r as i64 - bw as i64 } else { -1 },
+                    if ry < bh - 1 { r as i64 + bw as i64 } else { -1 },
+                ];
+                for t in nb {
+                    if t < 0 {
+                        continue;
+                    }
+                    let t = t as usize;
+                    if seen[t] != 0 {
+                        continue;
+                    }
+                    let tx = t % bw;
+                    let ty = t / bw;
+                    if cid[(ty + c.miny as usize) * w + tx + c.minx as usize] == c.id {
+                        continue;
+                    }
+                    seen[t] = 1;
+                    st.push(t);
+                }
+            }
+            if !touch {
+                holes += 1;
+            }
+        }
+    }
+    holes
+}
+
+/// Ray k after symmetry `e` of the square (bit 2: swap the axes, then bit 0:
+/// flip x, then bit 1: flip y): the rays sit at multiples of 2π/32, so each
+/// symmetry permutes them.
+#[inline]
+pub(crate) fn ray_d4(k: usize, e: usize) -> usize {
+    let mut k = k as i64;
+    if e & 4 != 0 {
+        k = 8 - k;
+    }
+    if e & 1 != 0 {
+        k = 16 - k;
+    }
+    if e & 2 != 0 {
+        k = -k;
+    }
+    k.rem_euclid(32) as usize
+}
+
+/// A radial profile scaled to its own maximum, as the wire stores it.
+pub(crate) fn profile_bytes(rad: &[i64; 32]) -> [u8; 32] {
+    let rmax = rad.iter().copied().max().unwrap_or(0).max(1);
+    let mut p = [0u8; 32];
+    for k in 0..32 {
+        p[k] = clamp(idiv(255 * rad[k], rmax), 0, 255) as u8;
+    }
+    p
+}
+
+/// `ray_d4` as a table, `RAY_D4[e][k]`, built at compile time.
+const RAY_D4: [[u8; 32]; 8] = {
+    let mut t = [[0u8; 32]; 8];
+    let mut e = 0;
+    while e < 8 {
+        let mut k = 0;
+        while k < 32 {
+            let mut v = k as i64;
+            if e & 4 != 0 {
+                v = 8 - v;
+            }
+            if e & 1 != 0 {
+                v = 16 - v;
+            }
+            if e & 2 != 0 {
+                v = -v;
+            }
+            t[e][k] = v.rem_euclid(32) as u8;
+            k += 1;
+        }
+        e += 1;
+    }
+    t
+};
+
+/// The least, byte by byte, of a profile's eight images under the square's
+/// symmetries: the same for a region and any mirrored or turned copy of it.
+pub(crate) fn canonical_profile(p: &[u8; 32]) -> [u8; 32] {
+    let mut best = [255u8; 32];
+    for perm in RAY_D4.iter() {
+        let mut v = [0u8; 32];
+        for k in 0..32 {
+            v[k] = p[perm[k] as usize];
+        }
+        if v < best {
+            best = v;
+        }
+    }
+    best
+}
+
+/// Wire 4's shape records.  Regions are kept and ordered by keys no symmetry
+/// of the square moves — area, perimeter, holes, the longer and the shorter
+/// side of the bounding box, the radial profile in its canonical orientation,
+/// the quantile band folded under inversion — and only then by when the scan
+/// met them, which decides only between regions that are one shape in two
+/// orientations: their records differ by that orientation alone, which the
+/// comparator's 64 alignments, the route and PAPH-SI all read through.  Bytes
+/// 6 and 7 hold the box's width and height (each at most 128: the grid never
+/// is wider) instead of wire 3's rounded ratio, from which the ratio is
+/// recomputed exactly (`Tier1::shape_aspect`) and which a transpose merely
+/// exchanges.
+fn shape_records_4(lab: &[i8], cid: &[i32], comps: &[Comp], w: usize, h: usize) -> (Vec<u8>, usize) {
+    let per = perimeters(cid, w, h, comps.len());
+    // only regions at least as large as the eighth largest can be kept, so
+    // only theirs are measured further (a smaller region's key is never read)
+    let mut areas: Vec<i64> = comps.iter().map(|c| c.area).collect();
+    areas.sort_unstable_by(|a, b| b.cmp(a));
+    let floor_area = if areas.len() >= SHAPE_N { areas[SHAPE_N - 1] } else { 0 };
+    struct Cand {
+        i: usize,
+        holes: i64,
+        long: i64,
+        short: i64,
+        prof: [u8; 32],
+        canon: [u8; 32],
+        fold: i64,
+    }
+    let mut cand: Vec<Cand> = Vec::new();
+    // A region's profile, canonical profile and holes are functions of its
+    // cells within its box alone (translation moves the centroid and the box
+    // together), so regions of one small shape — a dither's blocks, often
+    // hundreds tied at the eighth area — are measured once: keyed by the box
+    // and its cell mask when the box holds at most 64 cells.
+    let mut memo: std::collections::HashMap<(i64, i64, u64), ([u8; 32], [u8; 32], i64)> = std::collections::HashMap::new();
+    for (i, c) in comps.iter().enumerate() {
+        if c.area < floor_area {
+            continue;
+        }
+        let (bw, bh) = (c.maxx - c.minx + 1, c.maxy - c.miny + 1);
+        let measure = || -> ([u8; 32], [u8; 32], i64) {
+            let rad = rays_exact(cid, w, c.id, c.area, c.sx, c.sy, (c.minx, c.maxx, c.miny, c.maxy), bw + bh);
+            let prof = profile_bytes(&rad);
+            (prof, canonical_profile(&prof), holes_of(cid, w, c))
+        };
+        let (prof, canon, holes) = if bw * bh <= 64 {
+            let mut mask = 0u64;
+            for y in 0..bh {
+                for x in 0..bw {
+                    if cid[(c.miny + y) as usize * w + (c.minx + x) as usize] == c.id {
+                        mask |= 1u64 << (y * bw + x);
+                    }
+                }
+            }
+            *memo.entry((bw, bh, mask)).or_insert_with(measure)
+        } else {
+            measure()
+        };
+        // the band folded so a work and its luminance inverse (b ↔ 7 − b) agree
+        let b = lab[c.seed] as i64;
+        cand.push(Cand { i, holes, long: bw.max(bh), short: bw.min(bh), canon, prof, fold: b.min(7 - b) });
+    }
+    cand.sort_by(|x, y| {
+        comps[y.i]
+            .area
+            .cmp(&comps[x.i].area)
+            .then(per[y.i].cmp(&per[x.i]))
+            .then(y.holes.cmp(&x.holes))
+            .then(y.long.cmp(&x.long))
+            .then(y.short.cmp(&x.short))
+            .then(x.canon.cmp(&y.canon))
+            .then(x.fold.cmp(&y.fold))
+            .then(x.i.cmp(&y.i))
+    });
+    cand.truncate(SHAPE_N);
+
+    let mut out = vec![0u8; SHAPE_BYTES * SHAPE_N];
+    for (s, k) in cand.iter().enumerate() {
+        let c = &comps[k.i];
+        let o = s * SHAPE_BYTES;
+        let a = c.area as u32;
+        out[o..o + 4].copy_from_slice(&a.to_le_bytes());
+        out[o + 4] = (per[k.i] & 255) as u8;
+        out[o + 5] = ((per[k.i] >> 8) & 255) as u8;
+        out[o + 6] = (c.maxx - c.minx + 1) as u8;
+        out[o + 7] = (c.maxy - c.miny + 1) as u8;
+        out[o + 8] = clamp(k.holes, 0, 255) as u8;
+        out[o + 9..o + 41].copy_from_slice(&k.prof);
+    }
+    (out, cand.len())
+}
+
 /// Connected components over an 8-band luminance-QUANTILE label map, modally
 /// downsampled: quantile bands survive a tone curve and a rebuilt palette, and
 /// the modal downsample kills the dither confetti that would otherwise shatter
 /// every region into noise.
-pub fn shape_signatures(im: &Indexed) -> (Vec<u8>, usize) {
+pub fn shape_signatures(im: &Indexed, wire: u8) -> (Vec<u8>, usize) {
     let long = im.w.max(im.h) as i64;
     let cell = idiv(long + 127, 128).max(1);
     let gw = (idiv(im.w as i64 + cell - 1, cell)).max(4) as usize;
     let gh = (idiv(im.h as i64 + cell - 1, cell)).max(4) as usize;
-    let m = area_majority(im, gw, gh);
+    let m = area_majority(im, gw, gh, wire >= WIRE_4);
     let lab: Vec<i8> = m
         .iter()
         .map(|&v| if v < 0 { -1i8 } else { im.pal[v as usize].band as i8 })
         .collect();
     let (cid, comps) = components(&lab, gw, gh);
+    if wire >= WIRE_4 {
+        return shape_records_4(&lab, &cid, &comps, gw, gh);
+    }
     let (w, h) = (gw, gh);
 
     let mut order: Vec<usize> = (0..comps.len()).collect();
@@ -1381,7 +1769,299 @@ fn w_box(s: &[i64], w: usize, x: usize, y: usize, win: usize) -> i64 {
 /// silhouette exactly; the same sprite composited into a scene has no
 /// silhouette at all.  Strong when measurable, ZERO information when not —
 /// which is the shape of a channel that must be able to abstain.
-pub fn silhouette(im: &Indexed) -> (Vec<u8>, bool) {
+pub fn silhouette(im: &Indexed, wire: u8) -> (Vec<u8>, bool) {
+    if wire >= WIRE_4 {
+        silhouette_4(im)
+    } else {
+        silhouette_3(im)
+    }
+}
+
+/// The opaque pixels' 4-connected components, in the order the raster scan
+/// meets them, with the label map.
+fn opaque_components(im: &Indexed) -> (Vec<i32>, Vec<Comp>) {
+    let (w, h) = (im.w, im.h);
+    let n = w * h;
+    let mut id = vec![-1i32; n];
+    let mut stack: Vec<usize> = Vec::new();
+    let mut comps: Vec<Comp> = Vec::new();
+    for s0 in 0..n {
+        if id[s0] >= 0 || im.idx[s0] < 0 {
+            continue;
+        }
+        let cid = comps.len() as i32;
+        let (mut area, mut sx, mut sy) = (0i64, 0i64, 0i64);
+        let (mut minx, mut maxx, mut miny, mut maxy) = (w as i64, -1i64, h as i64, -1i64);
+        stack.clear();
+        stack.push(s0);
+        id[s0] = cid;
+        while let Some(p) = stack.pop() {
+            let px = (p % w) as i64;
+            let py = (p / w) as i64;
+            area += 1;
+            sx += px;
+            sy += py;
+            minx = minx.min(px);
+            maxx = maxx.max(px);
+            miny = miny.min(py);
+            maxy = maxy.max(py);
+            if px > 0 && id[p - 1] < 0 && im.idx[p - 1] >= 0 {
+                id[p - 1] = cid;
+                stack.push(p - 1);
+            }
+            if (px as usize) < w - 1 && id[p + 1] < 0 && im.idx[p + 1] >= 0 {
+                id[p + 1] = cid;
+                stack.push(p + 1);
+            }
+            if py > 0 && id[p - w] < 0 && im.idx[p - w] >= 0 {
+                id[p - w] = cid;
+                stack.push(p - w);
+            }
+            if (py as usize) < h - 1 && id[p + w] < 0 && im.idx[p + w] >= 0 {
+                id[p + w] = cid;
+                stack.push(p + w);
+            }
+        }
+        comps.push(Comp { id: cid, area, cx: idiv(sx, area), cy: idiv(sy, area), sx, sy, seed: s0, minx, maxx, miny, maxy });
+    }
+    (id, comps)
+}
+
+/// A component's central moments about its exact centroid, times its area:
+/// `area·Σ(x − x̄)² = area·Σx² − (Σx)²`, and likewise for y and xy.  A row's
+/// sums fit an i64 (x² < 2^28, at most 2^14 pixels a row); only the totals
+/// need 128 bits.  A mirror leaves M20 and M02 where they are and negates
+/// M11; a transpose exchanges M20 and M02.
+fn exact_moments(id: &[i32], w: usize, c: &Comp) -> (i128, i128, i128) {
+    let (mut sxx, mut syy, mut sxy) = (0i128, 0i128, 0i128);
+    for y in c.miny..=c.maxy {
+        let (mut rx, mut rxx, mut cnt) = (0i64, 0i64, 0i64);
+        for x in c.minx..=c.maxx {
+            if id[(y as usize) * w + x as usize] != c.id {
+                continue;
+            }
+            rx += x;
+            rxx += x * x;
+            cnt += 1;
+        }
+        let yy = y as i128;
+        sxx += rxx as i128;
+        sxy += yy * rx as i128;
+        syy += yy * yy * cnt as i128;
+    }
+    let (a, sx, sy) = (c.area as i128, c.sx as i128, c.sy as i128);
+    (a * sxx - sx * sx, a * syy - sy * sy, a * sxy - sx * sy)
+}
+
+/// A component's 8 × 8 occupancy over its box (0–255 a cell), the cells
+/// closed so that a mirror or a quarter turn moves them exactly.
+fn occupancy_cells(id: &[i32], w: usize, c: &Comp) -> [i32; 64] {
+    let (bw, bh) = ((c.maxx - c.minx + 1) as usize, (c.maxy - c.miny + 1) as usize);
+    let mut cell = [0i32; 64];
+    for gy in 0..8usize {
+        let (y0, y1) = cell_span(gy, bh, 8, true);
+        for gx in 0..8usize {
+            let (x0, x1) = cell_span(gx, bw, 8, true);
+            let (mut on, mut tot) = (0i64, 0i64);
+            for y in c.miny as usize + y0..c.miny as usize + y1 {
+                for x in c.minx as usize + x0..c.minx as usize + x1 {
+                    tot += 1;
+                    if id[y * w + x] == c.id {
+                        on += 1;
+                    }
+                }
+            }
+            cell[gy * 8 + gx] = if tot > 0 { idiv(on * 255, tot) as i32 } else { 0 };
+        }
+    }
+    cell
+}
+
+/// Keeps, in their order, the entries whose key is the greatest.
+fn keep_greatest<K: Ord>(v: &mut Vec<usize>, key: impl Fn(usize) -> K) {
+    let keyed: Vec<(K, usize)> = v.iter().map(|&i| (key(i), i)).collect();
+    let top = keyed.iter().map(|e| &e.0).max().expect("one entry at least");
+    let kept: Vec<usize> = keyed.iter().filter(|e| &e.0 == top).map(|e| e.1).collect();
+    *v = kept;
+}
+
+/// A component's 32-ray profile from its exact centroid.
+fn component_profile(id: &[i32], w: usize, c: &Comp) -> [u8; 32] {
+    let (bw, bh) = (c.maxx - c.minx + 1, c.maxy - c.miny + 1);
+    profile_bytes(&rays_exact(id, w, c.id, c.area, c.sx, c.sy, (c.minx, c.maxx, c.miny, c.maxy), bw + bh))
+}
+
+/// The component wire 4's silhouette describes, as an index into `comps`,
+/// and the key that settled it: 0 the area, 1 the perimeter and the box, 2
+/// the profile, 3 the moments, 4 the occupancy, 5 the scan order.
+///
+/// Of the components of the largest area, the one kept has the longest
+/// perimeter, then the longer and then the shorter side of the box, then the
+/// least canonical profile, then the greater principal moments (the larger
+/// and then the smaller of M20 and M02, then |M11|), then the least canonical
+/// occupancy: keys a mirror or a quarter turn leaves where they were, each
+/// computed only for the components still tied.  The scan order decides only
+/// what they all leave tied — in practice twins, one shape in two
+/// orientations, which no such key can tell apart; the record then equals the
+/// moved record up to that orientation.
+fn silhouette_component(id: &[i32], w: usize, h: usize, comps: &[Comp]) -> (usize, u8) {
+    let max_area = comps.iter().map(|c| c.area).max().unwrap_or(0);
+    let mut tied: Vec<usize> = (0..comps.len()).filter(|&i| comps[i].area == max_area).collect();
+    if tied.len() == 1 {
+        return (tied[0], 0);
+    }
+    keep_greatest(&mut tied, |i| {
+        let c = &comps[i];
+        let mut per = 0i64;
+        for y in c.miny..=c.maxy {
+            for x in c.minx..=c.maxx {
+                let p = (y as usize) * w + x as usize;
+                if id[p] != c.id {
+                    continue;
+                }
+                if x == 0 || y == 0 || x == w as i64 - 1 || y == h as i64 - 1 || id[p - 1] != c.id || id[p + 1] != c.id || id[p - w] != c.id || id[p + w] != c.id {
+                    per += 1;
+                }
+            }
+        }
+        let (bw, bh) = (c.maxx - c.minx + 1, c.maxy - c.miny + 1);
+        (per, bw.max(bh), bw.min(bh))
+    });
+    if tied.len() == 1 {
+        return (tied[0], 1);
+    }
+    keep_greatest(&mut tied, |i| std::cmp::Reverse(canonical_profile(&component_profile(id, w, &comps[i]))));
+    if tied.len() == 1 {
+        return (tied[0], 2);
+    }
+    keep_greatest(&mut tied, |i| {
+        let (m20, m02, m11) = exact_moments(id, w, &comps[i]);
+        (m20.max(m02), m20.min(m02), m11.abs())
+    });
+    if tied.len() == 1 {
+        return (tied[0], 3);
+    }
+    keep_greatest(&mut tied, |i| std::cmp::Reverse(canonical64(&occupancy_cells(id, w, &comps[i]), false, &D4_UNUSED)));
+    (tied[0], if tied.len() == 1 { 4 } else { 5 })
+}
+
+/// The opaque pixels' count when the silhouette is measured — some, and
+/// between 2 % and 98 % of the canvas — and None when it is not.
+fn measured_opaque(im: &Indexed) -> Option<i64> {
+    let n = (im.w * im.h) as i64;
+    let opaque = im.idx.iter().filter(|&&v| v >= 0).count() as i64;
+    if opaque == 0 || opaque * 100 > n * 98 || opaque * 100 < n * 2 {
+        None
+    } else {
+        Some(opaque)
+    }
+}
+
+/// The key that settled the component of wire 4's silhouette (as
+/// `silhouette_component` numbers them); None when it is not measured.  For
+/// the golden vectors and the tests.
+pub(crate) fn silhouette_settled_by(im: &Indexed) -> Option<u8> {
+    measured_opaque(im)?;
+    let (id, comps) = opaque_components(im);
+    if comps.is_empty() {
+        return None;
+    }
+    Some(silhouette_component(&id, im.w, im.h, &comps).1)
+}
+
+/// Wire 4's silhouette: wire 3's 66 bytes, sampled so that a mirrored or
+/// quarter-turned image gives the mirrored or quarter-turned record — rays
+/// from the exact centroid (`rays_exact`), moments about the exact centroid
+/// (integers to 2^106), the occupancy grid's cells closed — and, new at bytes
+/// 66–69, the component's box width and height (u16 each), from which a
+/// reader can take the aspect ratio of either orientation exactly.  The
+/// component is `silhouette_component`'s.
+fn silhouette_4(im: &Indexed) -> (Vec<u8>, bool) {
+    let (w, h) = (im.w, im.h);
+    let n = w * h;
+    let mut out = vec![0u8; 96];
+    let opaque = match measured_opaque(im) {
+        Some(o) => o,
+        None => return (out, false),
+    };
+    let (id, comps) = opaque_components(im);
+    if comps.is_empty() {
+        return (out, false);
+    }
+    let c = &comps[silhouette_component(&id, w, h, &comps).0];
+    let bw = c.maxx - c.minx + 1;
+    let bh = c.maxy - c.miny + 1;
+
+    out[..32].copy_from_slice(&component_profile(&id, w, c));
+
+    let (m20, m02, m11) = exact_moments(&id, w, c);
+    let a = c.area as i128;
+    // wire 3 divides the moment by area·(bw² + bh²); the exact moment is the
+    // sum over area, hence area² here
+    let den = (a * a * (bw * bw + bh * bh) as i128).max(1);
+    let q8 = |m: i128| -> u8 { (m * 1020 / den).clamp(0, 255) as u8 };
+    out[32] = q8(m20);
+    out[33] = q8(m02);
+    out[34] = q8(m11.abs());
+    out[35] = if m11 < 0 { 1 } else { 0 };
+    let asp = clamp(idiv(bw * 256, bh.max(1)), 0, 65535) as u16;
+    out[36..38].copy_from_slice(&asp.to_le_bytes());
+    out[38] = clamp(idiv(c.area * 255, (bw * bh).max(1)), 0, 255) as u8;
+    out[39] = clamp(comps.len() as i64, 0, 255) as u8;
+
+    opaque_runs_into(im, &mut out);
+
+    let (hi, lo) = canonical64(&occupancy_cells(&id, w, c), false, &D4_UNUSED);
+    out[56..60].copy_from_slice(&hi.to_le_bytes());
+    out[60..64].copy_from_slice(&lo.to_le_bytes());
+    let frac = clamp(idiv(opaque * 65535, n as i64), 0, 65535) as u16;
+    out[64..66].copy_from_slice(&frac.to_le_bytes());
+    out[66..68].copy_from_slice(&(bw.min(65535) as u16).to_le_bytes());
+    out[68..70].copy_from_slice(&(bh.min(65535) as u16).to_le_bytes());
+    (out, true)
+}
+
+/// Bytes 40–55, wire 4: rows and columns by their number of opaque runs (0
+/// to 7 or more), scaled by the count of rows or columns.  Wire 3 counted
+/// transitions from a transparent margin on the left (top) but not on the
+/// right (bottom), so a row ending opaque counted one fewer than its mirror
+/// image; a run count is the transitions counted against both margins,
+/// halved, and a flip leaves it where it was.
+fn opaque_runs_into(im: &Indexed, out: &mut [u8]) {
+    let (w, h) = (im.w, im.h);
+    let mut row_t = [0i64; 8];
+    let mut col_t = [0i64; 8];
+    for y in 0..h {
+        let mut t = 0usize;
+        let mut prev = false;
+        for x in 0..w {
+            let v = im.idx[y * w + x] >= 0;
+            if v && !prev {
+                t += 1;
+            }
+            prev = v;
+        }
+        row_t[t.min(7)] += 1;
+    }
+    for x in 0..w {
+        let mut t = 0usize;
+        let mut prev = false;
+        for y in 0..h {
+            let v = im.idx[y * w + x] >= 0;
+            if v && !prev {
+                t += 1;
+            }
+            prev = v;
+        }
+        col_t[t.min(7)] += 1;
+    }
+    for i in 0..8 {
+        out[40 + i] = clamp(idiv(row_t[i] * 255, h as i64), 0, 255) as u8;
+        out[48 + i] = clamp(idiv(col_t[i] * 255, w as i64), 0, 255) as u8;
+    }
+}
+
+fn silhouette_3(im: &Indexed) -> (Vec<u8>, bool) {
     let (w, h) = (im.w, im.h);
     let n = w * h;
     let mut out = vec![0u8; 96];
@@ -1434,7 +2114,7 @@ pub fn silhouette(im: &Indexed) -> (Vec<u8>, bool) {
             best_area = area;
             best = cid;
         }
-        comps.push(Comp { id: cid, area, cx: idiv(sx, area), cy: idiv(sy, area), minx, maxx, miny, maxy });
+        comps.push(Comp { id: cid, area, cx: idiv(sx, area), cy: idiv(sy, area), sx, sy, seed: s0, minx, maxx, miny, maxy });
     }
     if best < 0 {
         return (out, false);

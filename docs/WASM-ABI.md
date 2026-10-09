@@ -1,4 +1,4 @@
-# The WebAssembly ABI (ABI 3, X ABI 1, SI ABI 1)
+# The WebAssembly ABI (ABI 4, X ABI 1, SI ABI 1)
 
 `wasm/paph.wasm` exports a small C ABI — flat integers, length-prefixed byte blocks, opaque
 handles — instead of wasm-bindgen glue, so the whole contract fits on this page and any host
@@ -7,9 +7,15 @@ module, Python through `wasmtime`, Go through `wazero`, Rust hosts through `wasm
 linking the crate directly. The module imports nothing.
 
 Source of truth: [`rust/src/abi.rs`](../rust/src/abi.rs) and, for PAPH-X,
-[`rust/src/x/abi.rs`](../rust/src/x/abi.rs). Version checks: `paph_abi()` = 3, `paph_xabi()` = 1,
-`paph_version()` = 3 (the wire), `paph_t1_bytes()` = 3952. ABI 3 is ABI 2 plus the PAPH-X
-exports below; nothing of ABI 2 moved.
+[`rust/src/x/abi.rs`](../rust/src/x/abi.rs). Version checks: `paph_abi()` = 4, `paph_xabi()` = 1,
+`paph_version()` = 4 (the wire format `hash` writes by default; 3 before 1.2), `paph_t1_bytes()` =
+3952. ABI 3 was ABI 2 plus the PAPH-X exports below; ABI 4 (1.2) adds one configuration field, the
+wire format (field 21), and no export changes its signature: an ABI-3 host that passes a 21-field
+configuration must pass 22 — or null, for the defaults. What the defaults are moves with 1.2: a
+null configuration hashes wire 4, and a null profile handle or artefact means CAL-007 for
+comparator 42, X3 for PAPH-X and SI4 for PAPH-SI. A PAX1 sidecar is version 2, and 1.1's are
+ignored (the structures rebuilt); a Tier 1 whose section table counts more records than a section
+holds is refused.
 
 ## Memory
 
@@ -25,7 +31,7 @@ every call rather than holding a view across one.
 
 ## Configuration
 
-Hash-time and compare-time options travel as a flat `i32[21]` (`paph_config_fields()`); a null
+Hash-time and compare-time options travel as a flat `i32[22]` (`paph_config_fields()`); a null
 pointer means the shipping defaults, which `paph_default_config(out)` writes out.
 
 | # | field | default | # | field | default |
@@ -40,9 +46,13 @@ pointer means the shipping defaults, which `paph_default_config(out)` writes out
 | 7 | localCount (4–128) | 128 | 18 | mirrorHypothesis | 1 |
 | 8 | kpCount (0–512) | 512 | 19 | geoMinCorr (2–64) | 8 |
 | 9 | sketchCount (0–32) | 32 | 20 | kpSelect (0 = 4.1 rule, 1 = 4.2) | 1 |
-| 10 | hammingT | 8 | | | |
+| 10 | hammingT | 8 | 21 | wire (3 or 4; anything else reads as 4) | 4 |
 
-Fields 0–9 and 20 change the wire; the rest only change how wires are compared.
+Fields 0–9, 20 and 21 change the wire; the rest only change how wires are compared. Field 21
+selects the format `hash` writes: 4, the default ([SPEC-W4](SPEC-W4-paph-wire4.md): the same
+sections, the DCT, the shapes and the silhouette sampled so that a mirror or a quarter turn moves
+them exactly), or 3, byte for byte 1.0–1.1's. Every comparing export reads both; a pair of one wire-3 and one wire-4 side is refused
+(below).
 
 ## Hashing
 
@@ -53,7 +63,8 @@ paph_hash_checked(cfg, px, w, h, limits) -> block
 `px` is `w·h·4` bytes of RGBA. `limits` is null or `i32[3]` = (max width, max height, max
 pixels), which can only lower the specification's own (16384, 16384, 2²⁴). The block's payload
 is `[u32 t1_len][u32 t2_len][t1][t2]`; a refused image gives `t1_len = 0` and a UTF-8 message
-starting `limit:` in place of the wires. `paph_hash` is the same without limits.
+starting `limit:` in place of the wires. `paph_hash` is the same without limits. Byte 4 of either
+wire is its format.
 
 ## Comparing
 
@@ -61,14 +72,14 @@ A wire pair is parsed once into a **prepared side**, compared against as many ot
 
 | export | |
 |---|---|
-| `paph_prepare(t1, t1n, t2, t2n, flags) -> handle \| 0` | 0 when Tier 1 is refused. `t2` may be null (Tier-1 sketch only). flags bit 0 **strict**: refuse a Tier 2 claiming more than 512 keypoints — use it for anything user-supplied |
+| `paph_prepare(t1, t1n, t2, t2n, flags) -> handle \| 0` | 0 when Tier 1 is refused (its length, magic, format byte or CRC; a section-table count past what the section holds; on wire 4, a shape record's box side outside 1–128). `t2` may be null (Tier-1 sketch only). flags bit 0 **strict**: refuse a Tier 2 claiming more than 512 keypoints — use it for anything user-supplied |
 | `paph_prepared_info(h, out_i32x4)` | keypoints, Tier 2 usable (0/1), width, height |
 | `paph_prepare_free(h)` | |
-| `paph_profile(pcal, n) -> handle \| 0` | a calibration artefact (`.pcal` bytes), decoded; **0 when it does not decode**. Check it: wherever a profile is taken, 0 means the shipped CAL-004-PROPOSED, so passing a failed decode on would silently compare under the default |
+| `paph_profile(pcal, n) -> handle \| 0` | a calibration artefact (`.pcal` bytes), decoded; **0 when it does not decode**. Check it: wherever a profile is taken, 0 means the shipped CAL-007-PROVISIONAL (1.0–1.1 shipped CAL-004-PROPOSED: `docs/calibration/CAL-004-PROPOSED.pcal`), so passing a failed decode on would silently compare under the default |
 | `paph_profile_free(h)` | |
-| `paph_compare42(cfg, prof, a, b, flags) -> block` | comparator 42's report as UTF-8 JSON — exactly `JSON.stringify` of what the JavaScript engine returns. flags bit 0 **lean**: same verdict, `v3: null`, ~20 % less work |
-| `paph_screen42(cfg, prof, a, b) -> i32` | the stage-1 screen: `pass \| poolDirect << 1 \| poolMirror << 12` (pools saturate at 2047) |
-| `paph_rank42(cfg, prof, query, cands, n, flags, out) -> n` | one query against `n` candidates in one call (`cands`: `n` u32 handles). flags bit 0 **gate**: skip the comparison for pairs the screen rejects. Writes `n` records of `i32[16]`, below |
+| `paph_compare42(cfg, prof, a, b, flags) -> block` | comparator 42's report as UTF-8 JSON — exactly `JSON.stringify` of what the JavaScript engine returns. flags bit 0 **lean**: same verdict, `v3: null`, ~20 % less work. A wire-3 side against a wire-4 side: `Indeterminate`, reason `WIRE_MISMATCH` |
+| `paph_screen42(cfg, prof, a, b) -> i32` | the stage-1 screen: `pass \| poolDirect << 1 \| poolMirror << 12` (pools saturate at 2047). It reads only the keypoints, which the two formats share |
+| `paph_rank42(cfg, prof, query, cands, n, flags, out) -> n` | one query against `n` candidates in one call (`cands`: `n` u32 handles). flags bit 0 **gate**: skip the comparison for pairs the screen rejects. Writes `n` records of `i32[16]`, below; a candidate of the other wire format reads Indeterminate (5), its pools 0 and the screen flag clear |
 
 Rank record (`paph_rank_fields()` = 16):
 
@@ -106,7 +117,7 @@ comparator-42 vocabulary; every report also carries an **execution state** (`FAS
 | export | |
 |---|---|
 | `paph_xabi() -> 1` | |
-| `paph_xprofile(prof, pxcl, n) -> handle \| 0` | `prof`: a comparator-42 profile handle (0 = the shipped CAL-004-PROPOSED); `pxcl`: an X profile artefact (`.pxcl` bytes), or null for the shipped X2-PROVISIONAL bound to that profile (1.0.0–1.1.0 shipped X1-PROVISIONAL: `docs/calibration/X1-PROVISIONAL.pxcl`). Artefact layout 1 (X1) or 2 (X2: two more bytes, the route derivation and the structural door). 0 when the artefact does not decode — check it |
+| `paph_xprofile(prof, pxcl, n) -> handle \| 0` | `prof`: a comparator-42 profile handle (0 = the shipped CAL-007-PROVISIONAL); `pxcl`: an X profile artefact (`.pxcl` bytes), or null for the shipped X3-PROVISIONAL's schedule bound to that profile (1.1.1–1.1.2 shipped X2-PROVISIONAL and 1.0.0–1.1.0 X1-PROVISIONAL, both bound to CAL-004-PROPOSED: `docs/calibration/X2-PROVISIONAL.pxcl`, `X1-PROVISIONAL.pxcl` — load them with a CAL-004 handle). Artefact layout 1 (X1) or 2 (X2 and X3: two more bytes, the route derivation and the structural door). 0 when the artefact does not decode — check it, and check `paph_xprofile_status` |
 | `paph_xprofile_free(h)` | |
 | `paph_xprofile_bytes(h) -> block` | the X artefact's bytes (store them: the identity covers every parameter) |
 | `paph_xprofile_id(h, out_32)` | SHA-256 identity |
@@ -116,10 +127,10 @@ comparator-42 vocabulary; every report also carries an **execution state** (`FAS
 | `paph_xprepare_free(h)` | |
 | `paph_xprepared_info(h, out_i32x4)` | as `paph_prepared_info` |
 | `paph_xroute(h, out_u8x136)` | the route record: 4 global invariant words (u64 LE), 64 local MinHash lanes, 32 band MinHash lanes (128 route bytes), then local-code count, descriptor count, geometry class and measurability flags (u16 LE each) |
-| `paph_xsidecar(h) -> block` | the PAX1 sidecar (CRC-32 protected) |
-| `paph_xscreen(cfg, xb, a, b, out_i32x12) -> state` | the pair screen, never a verdict: −1 refused (profiles), 0 Reject, 1 Defer, 2 Pass, 3 Identical. Fields: 0 state · 1 route local · 2 route band · 3 route global · 4 route class (0 reject, 1 defer, 2 fast, 3 absent) · 5 pool direct · 6 pool mirror · 7 support direct · 8 support mirror · 9 rows scanned · 10 Hamming pairs · 11 swapped |
+| `paph_xsidecar(h) -> block` | the PAX1 sidecar, version 2: CRC-32 protected, and bound to the X profile and to its side — the Tier-1 checksum and format, and whether Tier 2 was read — so any other side ignores it |
+| `paph_xscreen(cfg, xb, a, b, out_i32x12) -> state` | the pair screen, never a verdict: −1 refused (profiles, or a wire-3 side against a wire-4 side), 0 Reject, 1 Defer, 2 Pass, 3 Identical. Fields: 0 state · 1 route local · 2 route band · 3 route global · 4 route class (0 reject, 1 defer, 2 fast, 3 absent) · 5 pool direct · 6 pool mirror · 7 support direct · 8 support mirror · 9 rows scanned · 10 Hamming pairs · 11 swapped |
 | `paph_xcompare(cfg, xb, a, b, flags) -> block` | the X report as UTF-8 JSON (`comparator: 50`). flags bits 0–1: policy (0 the profile's, 1 fast, 2 safe, 3 exact); bit 2 **audit** (EXACT42 beside the fast path, attached as `fallback`); bit 3 **copy scope** (a pair the lattice cannot lift above Related is `NotCopy`, not resolved further) |
-| `paph_xrank(cfg, xb, query, cands, n, flags, out) -> n` | one query against `n` candidates (`cands`: `n` u32 handles, 0 for a missing one): the route table screened with SIMD lanes, the sparse screen on what the route did not reject, the cascade on the survivors. flags bits 0–1: policy; bit 2: **no gate** (compare every candidate); bit 3: **full scope** (default copy scope). Writes `n` records of `i32[24]`, below |
+| `paph_xrank(cfg, xb, query, cands, n, flags, out) -> n` | one query against `n` candidates (`cands`: `n` u32 handles, 0 for a missing one): the route table screened with SIMD lanes, the sparse screen on what the route did not reject, the cascade on the survivors. flags bits 0–1: policy; bit 2: **no gate** (compare every candidate); bit 3: **full scope** (default copy scope). Writes `n` records of `i32[24]`, below; a candidate prepared under another X profile or in the other wire format reads Indeterminate, screen refused |
 | `paph_xrank_fields() -> 24`, `paph_xscreen_fields() -> 12` | |
 
 X rank record (`paph_xrank_fields()` = 24):
@@ -145,12 +156,13 @@ WebAssembly builds.
 
 ## PAPH-SI (SI ABI 1)
 
-The screening index of [SPEC-SI-paph-si.md](SPEC-SI-paph-si.md), added beside ABI 3 and X ABI 1 —
-nothing of either moves. `paph_siabi()` returns 1.
+The screening index of [SPEC-SI-paph-si.md](SPEC-SI-paph-si.md), added beside ABI 3 (now 4) and X
+ABI 1 — nothing of either moved. `paph_siabi()` returns 1. A signature does not record the wire format it
+was derived from: keep one format's signatures in an index (SPEC-W4 §9).
 
 | export | does |
 |---|---|
-| `paph_siprofile(psi, n) -> h` | an SI profile artefact (`.psi`), or null for the shipped SI3-PROVISIONAL, bound to X2 and fitted on the Pixa chain's artworks (SI2-PROVISIONAL, the synthetic fit bound to X2, and 1.1.0's SI1-PROVISIONAL, bound to X1: `docs/calibration/SI2-PROVISIONAL.psi`, `SI1-PROVISIONAL.psi`); 0 when it does not decode |
+| `paph_siprofile(psi, n) -> h` | an SI profile artefact (`.psi`), or null for the shipped SI4-PROVISIONAL, bound to X3 and fitted on the Pixa chain's artworks hashed in wire 4 (1.1.2's SI3-PROVISIONAL and the synthetic fit SI2-PROVISIONAL, both bound to X2, and 1.1.0's SI1-PROVISIONAL, bound to X1: `docs/calibration/SI3-PROVISIONAL.psi`, `SI2-…`, `SI1-…`); 0 when it does not decode |
 | `paph_siprofile_free(h)`, `paph_siprofile_bytes(h) -> block` | release; the artefact bytes |
 | `paph_siprofile_id(h, out32)`, `paph_siprofile_xid(h, out32)` | its SHA-256 identity; the identity of the X profile whose route lanes it bands |
 | `paph_siprofile_info(h, out_i32x4)` | probes, default threshold, default budget, feature version |

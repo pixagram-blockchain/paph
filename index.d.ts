@@ -1,5 +1,6 @@
 /** @pixagram/paph-x — PAPH 4.2 with PAPH-X: integer-only perceptual hash for pixel-art copy detection.
- *  Wire: SPEC-003 (format 3).  Comparator: SPEC-004.2 (comparator 42).
+ *  Wire: SPEC-003, format 4 (docs/SPEC-W4-paph-wire4.md; format 3 still written on request).
+ *  Comparator: SPEC-004.2 (comparator 42), calibration CAL-007-PROVISIONAL.
  *  The WebAssembly engine's own types: wasm/paph.d.ts (`@pixagram/paph-x/wasm`). */
 
 export type Scoring = 'gate' | 'weighted';
@@ -25,6 +26,9 @@ export interface ConfigInit {
    *  to reproduce a 4.1 wire exactly. */
   kpSelect?: 0 | 1;
   sketchCount?: number;
+  /** The wire format written: 4 (the default from 1.2, docs/SPEC-W4-paph-wire4.md) or 3 (1.0–1.1's
+   *  bytes).  Either is read; a pair of one wire-3 and one wire-4 side is refused (WIRE_MISMATCH). */
+  wire?: 3 | 4;
   // --- compare time: free to re-derive without re-hashing ---
   hammingT?: number;
   evidence?: Evidence;
@@ -51,6 +55,7 @@ export declare class Config implements Required<ConfigInit> {
   readonly kpCount: number;
   readonly kpSelect: 0 | 1;
   readonly sketchCount: number;
+  readonly wire: 3 | 4;
   readonly hammingT: number;
   readonly evidence: Evidence;
   readonly confidenceAt: number;
@@ -151,10 +156,14 @@ export declare class Paph {
   parseTier2?(bytes: Uint8Array): unknown;
 }
 
-/** The WIRE format version — 3, and it stays 3.  Not the package version:
- *  measurements should not move every time a judgement does.  (The wire layer
- *  on its own, `@pixagram/paph-x/wire`, is typed by src/wire.d.ts.) */
-export declare const WIRE_VERSION: 3;
+/** The WIRE format `hash` writes by default — 4 from 1.2 (1.0–1.1: 3).  Not the
+ *  package version: measurements should not move every time a judgement does.
+ *  (The wire layer on its own, `@pixagram/paph-x/wire`, is typed by src/wire.d.ts.) */
+export declare const WIRE_VERSION: 4;
+export declare const WIRE_3: 3;
+export declare const WIRE_4: 4;
+/** the refusal reason of a pair whose wires are of two formats */
+export declare const R_WIRE_MISMATCH: 'WIRE_MISMATCH';
 /** 3952 */
 export declare const T1_BYTES: number;
 export declare const SECTIONS: ReadonlyArray<{ id: number; name: string; len: number }>;
@@ -179,8 +188,8 @@ export declare function wasm(
 /* ------------------------------------------------------------------------
  * PAPH 4.2 — comparator 42 (SPEC-004.2).
  *
- * The wire FORMAT above is unchanged: the same 3952-byte tier 1 and 32 + 40n
- * tier 2 feed the comparator.  What moved is the tier-2 budget — 256 keypoints
+ * 4.2 left the wire FORMAT as it was (1.2's wire 4 resamples it, SPEC-W4):
+ * the same 3952-byte tier 1 and 32 + 40n tier 2 feed the comparator.  What moved is the tier-2 budget — 256 keypoints
  * to 512, which the format always allowed — and the selection, matching, voting
  * and diversity machinery that makes 512 points worth having.
  *
@@ -346,9 +355,13 @@ export declare function screen(
   opts: ConfigInit | undefined, profile: Profile
 ): Screen;
 
-/** CAL-004-PROPOSED — the shipped calibration, pending M7 validation. */
+/** CAL-007-PROVISIONAL — the shipped calibration from 1.2: CAL-004 with the moderate structural
+ *  bar at 3300 (docs/calibration/CAL-007-PROVISIONAL.log). */
 export declare function cal(): Profile;
 export declare function calibration(): Profile;
+export declare function cal007(): Profile;
+/** CAL-004-PROPOSED — 1.0–1.1's calibration, for reproducing verdicts issued under it. */
+export declare function cal004(): Profile;
 
 /* ---- comparator 41, frozen: for reproducing verdicts issued under 4.1 ---- */
 

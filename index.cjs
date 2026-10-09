@@ -29,6 +29,8 @@ module.exports = Object.assign({}, paph, {
   parseT1: wire.parseT1,
   parseT2: wire.parseT2,
   WIRE_VERSION: wire.VERSION,
+  WIRE_3: wire.WIRE_3,
+  WIRE_4: wire.WIRE_4,
   T1_BYTES: wire.T1_BYTES,
   KP_MAX: wire.KP_MAX,
   F_KPQ: wire.F_KPQ,

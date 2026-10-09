@@ -24,7 +24,8 @@
 //! -------------------------
 //! A wire pair is parsed once into a *prepared side* (an opaque handle), and a
 //! side is compared against as many others as you like without re-parsing it.
-//! A calibration profile is a handle too (0 = the shipped CAL-004-PROPOSED).
+//! A calibration profile is a handle too (0 = the shipped CAL-007-PROVISIONAL;
+//! 1.0–1.1's CAL-004-PROPOSED loads from its artefact).
 //!
 //!   paph_prepare(t1, t1n, t2, t2n, flags) -> handle | 0 (Tier 1 refused)
 //!       flags bit 0: strict — a Tier 2 claiming more than 512 keypoints is
@@ -60,9 +61,11 @@ use crate::v4::{bind, R_CORRUPT, R_PROFILE_UNSUPPORTED};
 use crate::v42::{compare_in, screen_in};
 use std::sync::OnceLock;
 
-pub const CFG_FIELDS: usize = 21;
+pub const CFG_FIELDS: usize = 22;
 /// ABI 3: ABI 2 unchanged, plus the PAPH-X exports of `x::abi`.
-pub const ABI_VERSION: u32 = 3;
+/// ABI 4 (1.2): the config gains field 21, the wire format `hash` writes
+/// (3 or 4; anything else reads as 4), and `paph_version` reports 4.
+pub const ABI_VERSION: u32 = 4;
 
 pub(crate) fn config_from(p: *const i32) -> Config {
     let mut c = Config::default();
@@ -90,6 +93,7 @@ pub(crate) fn config_from(p: *const i32) -> Config {
     c.mirror_hypothesis = v[18] != 0;
     c.geo_min_corr = v[19].clamp(2, 64) as usize;
     c.kp_select = v[20].clamp(0, 1);
+    c.wire = if v[21] == 3 { crate::config::WIRE_3 } else { crate::config::WIRE_4 };
     c
 }
 
@@ -119,6 +123,7 @@ pub extern "C" fn paph_default_config(out: *mut i32) {
     v[18] = c.mirror_hypothesis as i32;
     v[19] = c.geo_min_corr as i32;
     v[20] = c.kp_select;
+    v[21] = c.wire as i32;
 }
 
 #[no_mangle]
@@ -393,9 +398,10 @@ pub extern "C" fn paph_profile_free(h: *mut Profile) {
     }
 }
 
+/// The default comparator-42 profile: CAL-007-PROVISIONAL from 1.2.
 fn shipped() -> &'static Profile {
     static P: OnceLock<Profile> = OnceLock::new();
-    P.get_or_init(Profile::cal004)
+    P.get_or_init(Profile::shipped)
 }
 
 pub(crate) fn profile_ref<'a>(h: *const Profile) -> &'a Profile {
@@ -531,6 +537,12 @@ pub extern "C" fn paph_rank42(
             continue;
         }
         let c = unsafe { &*cand };
+        if c.t1.version != q.t1.version {
+            // a candidate of the other wire format: refused, not screened
+            let r = crate::v42::refuse_report(crate::wire::R_WIRE_MISMATCH, p);
+            rank_record(rec, Some(&r), &crate::v42::Screen42 { pass: false, pool_direct: 0, pool_mirror: 0 }, false);
+            continue;
+        }
         let swapped = canon_swapped(q, c);
         let (ca, cb) = if swapped { (c, q) } else { (q, c) };
         let mut ctx = PairCtx::new(ca, cb);
@@ -560,6 +572,13 @@ pub extern "C" fn paph_rank42(
 #[no_mangle]
 pub extern "C" fn paph_equiv_digest() -> *mut u8 {
     out_block(crate::equiv::digest().as_bytes())
+}
+
+/// The wire-4 equivalence digest (test builds only), as `paph_equiv_digest`.
+#[cfg(feature = "equiv")]
+#[no_mangle]
+pub extern "C" fn paph_equiv_digest4() -> *mut u8 {
+    out_block(crate::equiv::digest_wire4().as_bytes())
 }
 
 /// Test builds only: `reps` descriptor scans of a prepared pair (direct

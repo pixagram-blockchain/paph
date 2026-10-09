@@ -2,7 +2,7 @@
  *  calibration profiles, and the hash that enforces a profile's limits.  Shared types live in
  *  ../index.d.ts. */
 export {
-  VERSION, COMPARATOR, CONTAINER, compare, screen, cal, calibration,
+  VERSION, COMPARATOR, CONTAINER, compare, screen, cal, calibration, cal007, cal004, R_WIRE_MISMATCH,
   compare41, screen41, cal41, legacyCal001,
   profileEncode, profileDecode, profileId, profileName, lutEval, lutChannel,
 } from '../index.js';

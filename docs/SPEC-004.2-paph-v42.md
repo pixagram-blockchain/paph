@@ -1,6 +1,7 @@
 # SPEC-004.2 — comparator 42, the 512-keypoint budget
 
-Status: **IMPLEMENTED** in both engines, calibration **PROPOSED**.
+Status: **IMPLEMENTED** in both engines, calibration **PROPOSED**. From `@pixagram/paph-x` 1.2 the
+shipped calibration is **CAL-007-PROVISIONAL** — CAL-004 with one bar moved (§19).
 
 The wire does not move. Tier 1 is still exactly 3952 bytes, Tier 2 is
 still `32 + 40n`, and a 4.1 wire still parses, still compares and still
@@ -659,3 +660,55 @@ full sort produced), and the transparent-or-scale transform moved out of
 four nested loops to one pass per image. Net, on the reference fixture:
 hash 111 → 91 ms, WebAssembly 152 → 122 ms, every suite green and the
 golden file untouched.
+
+---
+
+## §19 — CAL-007-PROVISIONAL (`@pixagram/paph-x` 1.2)
+
+Comparator 42 does not change; its calibration does, by one decision constant.
+CAL-007-PROVISIONAL is CAL-004-PROPOSED with **`thresholds[2]`, the moderate structural bar, at
+3300 instead of 2400** — the bar of the lattice's "partial agreement" arm, which reads a pair
+`Suspected` on certifiable structure alone between the moderate and the strong bar (4000).
+Every other field is CAL-004's — the measurement fields, the LUTs, every bar of a `Copy` arm — but
+the name. The artefact is `docs/calibration/CAL-007-PROVISIONAL.pcal`, 320 bytes (its 16-byte name field reads
+`CAL-007-PROVISIO`, as CAL-001's reads `CAL-001-PROVISIO`), `calibration_profile_id`
+`741afad9252f2ccb4ef6f691725b740d1b100a92858b71346910aed457eee899`.
+
+**Why.** On the artworks of the Pixa chain (`@pixagram/paph-x` 1.1.2's snapshot: 177 works by 30
+authors, 15,576 pairs) comparator 42 under CAL-004 read `Suspected` on 222 of the 14,412 pairs of
+two authors' works (1.5 %, on wire 4) and `Copy` on none: every one on the partial-agreement arm,
+structure between 2400 and the strong bar, no geometry. A review queue fed with `Suspected` grows
+with the number of pairs. The highest structural score of a certifiable pair of two authors' works
+is 3232; the bar is the next multiple of 100 above it, 3300. Fitted on each of two author folds
+alone, the bar is 3200 and 3300: 1 of the other fold's 1,748 cross-author pairs reaches the first,
+none of its 5,482 the second.
+
+**What it moves.** Only `Suspected → Related`, and only where structure alone made the
+suspicion: no `Copy` arm reads the moderate bar, so no `Copy` moves, and no pair moves up.
+
+| | CAL-004 | CAL-007 |
+|---|---:|---:|
+| the chain: pairs of two authors' works read Suspected | 222 | **0** |
+| the chain: pairs of one author's works read Suspected | 37 | 0 |
+| the chain: Copy (both within one author's works) | 2 | 2 |
+| the chain's real bases under the twenty transforms (3,480 pairs): Copy | 3,095 | 3,095 |
+| — Suspected or above | 3,397 | 3,309 |
+| the synthetic corpus (2,400 transformed pairs): Copy | 995 | 995 |
+| — Suspected or above | 1,857 | 1,682 |
+| synthetic negatives (10,020 pairs): Suspected | 140 | 74 |
+| synthetic negatives: Copy | 3 | 3 |
+
+The copies it demotes are the weakest, whose structure sits between the two bars without a
+geometric model: on the real bases 74 of the 88 are palette shuffles, on the synthetic corpus
+resamples, crops, re-dithers, inversions and palette shuffles. A review queue loses them; an alert
+on `Copy` never had them. `sibench calfit` refits the bar and prints these tables;
+`sibench calib` writes every pair's lattice inputs, and `tools/cal-lattice.py` recomputes the
+lattice on them under any candidate profile (it reproduces CAL-004's recorded verdict on every
+row). The runs are `docs/calibration/CAL-007-PROVISIONAL.log`.
+
+**Still provisional.** 177 works by 30 authors, among which comparator 42 finds two copy pairs,
+are not the moderation corpus §17 asks for; the bar is the edge of what one snapshot shows
+between authors, not a measured error rate, and is to be refitted as the chain grows (a fit on
+another snapshot is another profile, under another name). Verdicts issued under CAL-004 stay
+reproducible from `docs/calibration/CAL-004-PROPOSED.pcal`, and every report names the
+calibration it was issued under.

@@ -11,12 +11,14 @@
 //! CRC-32 rather than v2's XOR: an XOR cannot detect a transposition of two
 //! bytes, which is exactly the corruption a byte-range index introduces.
 
-use crate::config::{clamp, idiv, Config, KP_SELECT_QUALITY, MAX_KP_COUNT};
+use crate::config::{clamp, idiv, Config, KP_SELECT_QUALITY, MAX_KP_COUNT, WIRE_3, WIRE_4};
 use crate::front::normalise;
 use crate::keypoints::{keypoints, Keypoint, RotCache};
 use crate::sections::*;
 
-pub const VERSION: u8 = 3;
+/// The wire format `hash` writes by default (`Config::wire`); `parse_t1`
+/// reads 3 and 4.  docs/SPEC-W4-paph-wire4.md.
+pub const VERSION: u8 = WIRE_4;
 pub const HEADER1: usize = 64;
 pub const HEADER2: usize = 32;
 pub const KP_REC: usize = 40;
@@ -50,6 +52,12 @@ pub const SECTIONS: [SectionDef; 11] = [
     SectionDef { id: 10, name: "colour", len: 80 },
     SectionDef { id: 11, name: "sketch", len: 1152 },
 ];
+
+/// The most records each section holds, in `SECTIONS` order: its length over
+/// its record's (the DCT, the brightness record and the silhouette are one
+/// record; the runs three; a palette entry 4 B, an adjacency 6, a shape 41, a
+/// local code 8 and its anchor 4, a colour 5, a sketch keypoint 36).
+pub const SECTION_CAP: [usize; 11] = [1, 1, 24, 48, 8, 3, 128, 128, 1, 16, 32];
 
 pub const T1_BYTES: usize = 3952;
 
@@ -138,6 +146,8 @@ pub struct Fingerprint {
 /// Parsed view of a Tier-1 wire.
 pub struct Tier1 {
     pub bytes: Vec<u8>,
+    /// the wire format, 3 or 4
+    pub version: u8,
     pub flags: u16,
     pub width: usize,
     pub height: usize,
@@ -160,7 +170,78 @@ impl Tier1 {
     pub fn max_dim(&self) -> i64 {
         self.width.max(self.height) as i64
     }
+    /// The aspect field of shape record `i` (`rec` = the record's 41 bytes),
+    /// as wire 3 stores it: ⌊256·width / height⌋ of the region's box.  Wire 4
+    /// stores the width and the height and this recomputes the same value.
+    pub fn shape_aspect(&self, rec: &[u8]) -> i64 {
+        match self.shape_dims(rec) {
+            Some((bw, bh)) => clamp(idiv(bw * 256, bh.max(1)), 0, 65535),
+            None => u16::from_le_bytes([rec[6], rec[7]]) as i64,
+        }
+    }
+    /// The box of shape record `rec` as (width, height), on a wire that
+    /// stores it (4); `None` on wire 3.
+    pub fn shape_dims(&self, rec: &[u8]) -> Option<(i64, i64)> {
+        if self.version >= WIRE_4 {
+            Some((rec[6] as i64, rec[7] as i64))
+        } else {
+            None
+        }
+    }
+    /// The silhouette component's box as (width, height), on a wire that
+    /// stores it (4, bytes 66–69 of the section); `None` on wire 3.
+    pub fn silhouette_dims(&self) -> Option<(i64, i64)> {
+        if self.version >= WIRE_4 {
+            let s = self.sec("silhouette");
+            Some((u16::from_le_bytes([s[66], s[67]]) as i64, u16::from_le_bytes([s[68], s[69]]) as i64))
+        } else {
+            None
+        }
+    }
+    /// Shape record `rec`'s box, longer side over shorter, in Q8 (256 =
+    /// square) — the orientation-free elongation the route (G3) and PAPH-SI
+    /// read.  Exact from the sides on wire 4, where a transpose only
+    /// exchanges them; from wire 3's rounded ratio `a` as max(a, 65536/a)
+    /// otherwise, which a transpose can move across a class edge at ratios
+    /// past about 7.
+    pub fn shape_asym_q8(&self, rec: &[u8]) -> i64 {
+        match self.shape_dims(rec) {
+            Some((bw, bh)) => asym_q8(bw, bh),
+            None => asym_q8_legacy(u16::from_le_bytes([rec[6], rec[7]]) as i64),
+        }
+    }
+    /// The silhouette component's elongation, as `shape_asym_q8`.
+    pub fn silhouette_asym_q8(&self) -> i64 {
+        match self.silhouette_dims() {
+            Some((bw, bh)) => asym_q8(bw, bh),
+            None => {
+                let s = self.sec("silhouette");
+                asym_q8_legacy(u16::from_le_bytes([s[36], s[37]]) as i64)
+            }
+        }
+    }
 }
+
+/// ⌊256 · longer / shorter⌋ of a box.
+pub fn asym_q8(bw: i64, bh: i64) -> i64 {
+    idiv(bw.max(bh) * 256, bw.min(bh).max(1))
+}
+
+/// The same from a stored ⌊256·w/h⌋ (the 1.0–1.1 rule).
+pub fn asym_q8_legacy(a: i64) -> i64 {
+    if a > 0 {
+        a.max(65536 / a)
+    } else {
+        256
+    }
+}
+
+/// Refusal reason for a pair whose two wires are of different formats: the
+/// sections of a wire-3 and a wire-4 hash of one image differ where wire 4
+/// changed the sampling, and no calibration was fitted across the two.
+pub const R_WIRE_MISMATCH: &str = "WIRE_MISMATCH";
+/// Comparator 3's error for the same pair (`compare::compare`).
+pub const E_WIRE_MISMATCH: &str = "tier 1 wire formats differ (3 and 4): hash both sides with one format";
 
 pub fn parse_t1(b: &[u8]) -> Result<Tier1, &'static str> {
     if b.len() != T1_BYTES {
@@ -169,7 +250,7 @@ pub fn parse_t1(b: &[u8]) -> Result<Tier1, &'static str> {
     if &b[0..4] != b"PAPH" {
         return Err("bad magic");
     }
-    if b[4] != VERSION {
+    if b[4] != WIRE_3 && b[4] != WIRE_4 {
         return Err("unsupported version (v2 wires MUST be rejected, never reinterpreted)");
     }
     if b[5] != 1 {
@@ -187,9 +268,25 @@ pub fn parse_t1(b: &[u8]) -> Result<Tier1, &'static str> {
             return Err("section table mismatch");
         }
         counts[i] = b[o + 1] as usize;
+        // the checksum covers the sections, not this table: a count past what
+        // its section holds would send every reader past the section's end
+        if counts[i] > SECTION_CAP[i] {
+            return Err("section count exceeds what the section holds");
+        }
+    }
+    // wire 4's shape records carry their region's box on the shape grid,
+    // whose sides are 1 to 128
+    if b[4] == WIRE_4 {
+        let o = section_offset("shapes");
+        for r in b[o..o + counts[4] * 41].chunks_exact(41) {
+            if !(1..=128).contains(&r[6]) || !(1..=128).contains(&r[7]) {
+                return Err("shape record box out of range");
+            }
+        }
     }
     Ok(Tier1 {
         bytes: b.to_vec(),
+        version: b[4],
         flags: u16::from_le_bytes([b[6], b[7]]),
         width: u16::from_le_bytes([b[8], b[9]]) as usize,
         height: u16::from_le_bytes([b[10], b[11]]) as usize,
@@ -250,11 +347,11 @@ pub fn parse_t2(b: &[u8]) -> Result<Tier2, &'static str> {
     })
 }
 
-fn serialize_t2(kps: &[Keypoint], t1crc: u32, max_dim: i64, xmax: i32, select: i32) -> Vec<u8> {
+fn serialize_t2(kps: &[Keypoint], t1crc: u32, max_dim: i64, xmax: i32, select: i32, version: u8) -> Vec<u8> {
     let n = kps.len().min(MAX_KP_COUNT);
     let mut b = vec![0u8; HEADER2 + n * KP_REC];
     b[0..4].copy_from_slice(b"PAP2");
-    b[4] = VERSION;
+    b[4] = version;
     b[5] = 2;
     b[6..8].copy_from_slice(&(n as u16).to_le_bytes());
     b[8..12].copy_from_slice(&t1crc.to_le_bytes());
@@ -326,7 +423,8 @@ pub fn hash(px: &[u8], w: usize, h: usize, cfg: &Config, rot: &RotCache) -> Fing
     let norm = normalise(px, w, h, cfg);
     let im = &norm.im;
 
-    let thumb = thumbnail16(im);
+    let wire = if cfg.wire == WIRE_3 { WIRE_3 } else { WIRE_4 };
+    let thumb = thumbnail16(im, wire);
     let flat = thumb.iter().all(|&v| v == thumb[0]);
 
     let mut flags: u16 = 0;
@@ -346,14 +444,14 @@ pub fn hash(px: &[u8], w: usize, h: usize, cfg: &Config, rot: &RotCache) -> Fing
         flags |= F_KPQ;
     }
 
-    let dct = hierarchical_dct(&thumb);
+    let dct = hierarchical_dct(&thumb, wire);
     let brt = brightness_record(&thumb);
     let (pal, pal_n) = identity_palette(im);
     let (rag, rag_n) = sparse_rag(im);
-    let (shp, shp_n) = shape_signatures(im);
+    let (shp, shp_n) = shape_signatures(im, wire);
     let runs = run_lengths(im);
     let loc = local_fingerprints(im, cfg);
-    let (sil, sil_ok) = silhouette(im);
+    let (sil, sil_ok) = silhouette(im, wire);
     let (col, col_n) = colour_digest(im);
     if sil_ok {
         flags |= F_SIL;
@@ -379,7 +477,7 @@ pub fn hash(px: &[u8], w: usize, h: usize, cfg: &Config, rot: &RotCache) -> Fing
 
     let mut b = vec![0u8; T1_BYTES];
     b[0..4].copy_from_slice(b"PAPH");
-    b[4] = VERSION;
+    b[4] = wire;
     b[5] = 1;
     b[6..8].copy_from_slice(&flags.to_le_bytes());
     b[8..10].copy_from_slice(&(norm.orig_w as u16).to_le_bytes());
@@ -412,7 +510,7 @@ pub fn hash(px: &[u8], w: usize, h: usize, cfg: &Config, rot: &RotCache) -> Fing
     let c = crc32(&b[HEADER1..]);
     b[60..64].copy_from_slice(&c.to_le_bytes());
 
-    let t2 = serialize_t2(&kp.list, c, kp.max_dim, kp.xmax, cfg.kp_select);
+    let t2 = serialize_t2(&kp.list, c, kp.max_dim, kp.xmax, cfg.kp_select, wire);
     Fingerprint {
         t1: b,
         t2,
@@ -526,5 +624,42 @@ mod limit_tests {
         let px = vec![0u8; 9 * 8 * 4];
         let e = hash_checked(&px, 9, 8, &cfg, &rot, Some(&[16, 16, 64])).err().unwrap();
         assert_eq!(e, "limit: pixel count exceeds maximum");
+    }
+
+    /// The section table sits outside the checksum, so a parser must hold its
+    /// counts to what each section holds — past that, every reader would run
+    /// off the section's end — and wire 4's shape boxes to the shape grid.
+    #[test]
+    fn parse_holds_counts_and_shape_boxes_to_their_sections() {
+        let rot = RotCache::new(&pattern());
+        let im = crate::synth::pixel_art(150, 110, 9, 7, 0);
+        for wire in [crate::config::WIRE_3, crate::config::WIRE_4] {
+            let f = hash(&im.px, im.w, im.h, &Config { wire, ..Config::default() }, &rot);
+            let t = parse_t1(&f.t1).unwrap();
+            for (i, s) in SECTIONS.iter().enumerate() {
+                assert!(t.counts[i] <= SECTION_CAP[i], "{} count {}", s.name, t.counts[i]);
+                assert!(SECTION_CAP[i] >= 1 && s.len % SECTION_CAP[i] == 0, "{}", s.name);
+                let mut b = f.t1.clone();
+                b[16 + i * 4 + 1] = SECTION_CAP[i] as u8 + 1;
+                assert_eq!(parse_t1(&b).err(), Some("section count exceeds what the section holds"), "{} wire {wire}", s.name);
+                b[16 + i * 4 + 1] = SECTION_CAP[i] as u8;
+                assert!(parse_t1(&b).is_ok() || (wire == crate::config::WIRE_4 && s.name == "shapes"), "{} at capacity, wire {wire}", s.name);
+            }
+            // a counted shape record's box, on the wire that stores one
+            assert!(t.count("shapes") > 0);
+            let o = section_offset("shapes");
+            for (k, v) in [(6usize, 0u8), (7, 0), (6, 129), (7, 200)] {
+                let mut b = f.t1.clone();
+                b[o + k] = v;
+                let c = crc32(&b[HEADER1..]);
+                b[60..64].copy_from_slice(&c.to_le_bytes());
+                let r = parse_t1(&b);
+                if wire == crate::config::WIRE_4 {
+                    assert_eq!(r.err(), Some("shape record box out of range"), "byte {k} = {v}");
+                } else {
+                    assert!(r.is_ok(), "wire 3 stores an aspect there");
+                }
+            }
+        }
     }
 }

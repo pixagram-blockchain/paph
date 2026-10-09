@@ -1,12 +1,13 @@
-//! The PAPH-SI C ABI (SI ABI 1) — exports added beside ABI 3 and X ABI 1;
-//! nothing of either moves.
+//! The PAPH-SI C ABI (SI ABI 1) — exports added beside ABI 3 (4 from 1.2)
+//! and X ABI 1; nothing of either moved.
 //!
 //! ```text
 //!   paph_siabi() -> 1            paph_sisig_bytes() -> 104
 //!   paph_siprofile(psi, n) -> handle | 0
-//!       an SI artefact, or null for the shipped SI3-PROVISIONAL (bound to
-//!       X2, fitted on the chain's artworks; SI2, the synthetic fit, and
-//!       1.1.0's SI1 are artefact files); 0 when the artefact does not decode
+//!       an SI artefact, or null for the shipped SI4-PROVISIONAL (bound to
+//!       X3, fitted on the chain's artworks hashed in wire 4; 1.1.2's SI3,
+//!       SI2 the synthetic fit, and 1.1.0's SI1 are artefact files); 0 when
+//!       the artefact does not decode
 //!   paph_siprofile_free(h)
 //!   paph_siprofile_bytes(h) -> block           the artefact's bytes
 //!   paph_siprofile_id(h, out_32)               SHA-256 identity

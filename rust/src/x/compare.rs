@@ -73,6 +73,11 @@ pub struct XCtx {
     pub sc42: Box<crate::geom42::Scratch>,
     /// the mirrored A keypoints of the current pair
     am: Vec<Keypoint>,
+    /// per geometry measurement of the last comparison: [rows scanned,
+    /// direct pool, mirror pool, inliers, models, certificate, the
+    /// measurement with the weak signal] — read by the harness (`sibench
+    /// xtrace`), never by a verdict
+    pub trace: Vec<[i64; 7]>,
 }
 
 impl XCtx {
@@ -83,6 +88,7 @@ impl XCtx {
             d0: vec![0u8; 128 * 128],
             sc42: Box::new(crate::geom42::Scratch::new()),
             am: Vec::with_capacity(512),
+            trace: Vec::with_capacity(8),
         }
     }
 }
@@ -159,6 +165,9 @@ fn check_profiles(a: &XPrepared, b: &XPrepared, xb: &XBound) -> Option<&'static 
     }
     if a.xid != xb.xid || b.xid != xb.xid {
         return Some(R_XPROFILE_MISMATCH);
+    }
+    if a.p.t1.version != b.p.t1.version {
+        return Some(crate::wire::R_WIRE_MISMATCH);
     }
     None
 }
@@ -605,6 +614,7 @@ pub fn xcompare_in(
     ctx.g.inlier_a.clear();
     ctx.g.inlier_b.clear();
     ctx.g.inlier_level.clear();
+    ctx.trace.clear();
     if !thin && geo_measurable {
         loop {
             ctx.m.pools(ca, cb, base);
@@ -638,6 +648,7 @@ pub fn xcompare_in(
             if anchor_inliers.is_none() {
                 anchor_inliers = Some(mm.total_inliers);
             }
+            ctx.trace.push([ctx.m.stats.rows as i64, ctx.m.pd.len() as i64, ctx.m.pm.len() as i64, mm.total_inliers, mm.nmodels as i64, cert as i64, meas]);
             if cert || tier + 1 >= xp.anchors.len() || ctx.m.stats.rows >= na {
                 break;
             }
@@ -742,15 +753,28 @@ pub fn xcompare_in(
         None => true,
     };
     let potential = ev(0);
-    let upward = match decide(&corners, &s, potential, potential, base) {
-        Some(v) => v.state != verdict.state,
-        None => true,
+    // A copy-scope stop is not a lattice state: geometry at its potential
+    // moves it when it lifts any corner to Suspected or above.  Without
+    // this a NotCopy stated after a saturated control skipped the deferral
+    // below — and once the control has zeroed the evidence, a structure
+    // whose upper bound sits under the moderate bar reads below Suspected on
+    // every corner, so the copy-scope stop came first: a pasted copy
+    // comparator 42 certifies on geometry alone (its exhaustive pool's
+    // control does not saturate) read NotCopy, `FAST` (`sibench lost`, 1.2;
+    // CAL-007's higher moderate bar made the stop reachable there)
+    let upward = if not_copy {
+        !all_below_suspected(&corners, &s, potential, potential, base)
+    } else {
+        match decide(&corners, &s, potential, potential, base) {
+            Some(v) => v.state != verdict.state,
+            None => true,
+        }
     };
     let saturated = ctl_ran && ctl_val >= SCALE && meas >= cfg.geo_conf_at as i64;
     // a truncated pool is evidence that was thrown away; a row that needed
     // two shared projections is not (its strong matches share many more)
     let unsafe_sparse = ctx.m.truncated;
-    let defer = unsafe_sparse || (pivotal && !cert && !below_suspected(verdict.state) && !not_copy) || (upward && saturated && !not_copy);
+    let defer = unsafe_sparse || (pivotal && !cert && !below_suspected(verdict.state) && !not_copy) || (upward && saturated);
     let (lo, hi) = s.bounds(base);
     r.geometry = Some(XGeometry {
         anchors,
@@ -1054,6 +1078,43 @@ mod tests {
                     let s2 = format!("{:?}", xscreen(x, y, &cfg, &xb, &mut XCtx::new()));
                     assert_eq!(s1, s2);
                 }
+            }
+        }
+    }
+
+    /// A copy-scope stop after a saturated control is deferred like any
+    /// other verdict the control zeroed.  The pair is the PAPH-SI corpus's
+    /// base 29 pasted into its host (`sibench lost`, 1.2): comparator 42
+    /// certifies it on geometry alone, while on the anchor tier's sparse
+    /// pools the control saturates and the evidence reads 0 — and under
+    /// CAL-007, whose moderate bar the structural upper bound (3085) stays
+    /// under, every corner then read below Suspected and the cascade stated
+    /// NotCopy, `FAST`.  Under CAL-004 the same bound kept the lattice open,
+    /// so the full verdict deferred.
+    #[test]
+    fn copy_scope_defers_a_saturated_control() {
+        use crate::synth::{paste, pixel_art, work};
+        let cfg = Config::default();
+        let base = work(400, 90, 36, false);
+        let host = pixel_art(820, 196, 1057, 9, 2);
+        let copy = paste(&base, &host, 203, 35);
+        for xb in [XBound::shipped(), XBound::x2()] {
+            let (a, b) = (side(&base.px, base.w, base.h, &xb), side(&copy.px, copy.w, copy.h, &xb));
+            let r42 = crate::v42::compare_v42_lean(&a.p, &b.p, &cfg, &xb.base);
+            assert_eq!(r42.base.verdict, "Copy");
+            let mut ctx = XCtx::new();
+            let safe = XOptions { policy: Some(POLICY_SAFE), audit: false, scope: Scope::Copy };
+            let r = xcompare(&a, &b, &cfg, &xb, &safe, &mut ctx);
+            assert_eq!((r.verdict, r.execution, r.reason), ("Copy", Execution::Fallback, "control-saturated"), "{}", xb.xp.name_str());
+            let fast = XOptions { policy: Some(POLICY_FAST), ..safe };
+            let r = xcompare(&a, &b, &cfg, &xb, &fast, &mut ctx);
+            assert_eq!((r.verdict, r.execution), ("Indeterminate", Execution::Deferred), "{}", xb.xp.name_str());
+            // XRank, shown the target alone, in both arrival orders
+            let mut rs = crate::x::rank::RankScratch::new();
+            for (q, t) in [(&a, &b), (&b, &a)] {
+                let mut out = vec![0i32; crate::x::rank::XRANK_FIELDS];
+                crate::x::rank::xrank(q, &[Some(t)], &cfg, &xb, &crate::x::rank::XRankOptions::default(), &mut ctx, &mut rs, &mut out);
+                assert_eq!(out[0], crate::abi::state_code("Copy"), "{}", xb.xp.name_str());
             }
         }
     }

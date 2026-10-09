@@ -2,8 +2,9 @@
 //!
 //! SPEC-003 P1: every knob here is a COMPARE-time choice.  Moving one
 //! re-decides a pair without re-hashing anything, which is the whole argument
-//! for the larger wire budget.  Three fields (`local_count`, `kp_count`,
-//! `sketch_count`) do change the wire and are marked as such.
+//! for the larger wire budget.  The hash-time fields — the front end's, the
+//! local windows and counts, the keypoint budget and rule, and `wire`, the
+//! format itself — do change the wire, and sit apart in `Config`.
 
 /// Fixed-point scale for every channel reading: 0 ..= 10000.
 pub const SCALE: i64 = 10_000;
@@ -19,6 +20,14 @@ pub const MAX_KP_COUNT: usize = 512;
 ///   1 — 4.2: the quality score of SPEC-004.2 §3
 pub const KP_SELECT_LEGACY: i32 = 0;
 pub const KP_SELECT_QUALITY: i32 = 1;
+
+/// Wire formats the hasher writes (the Tier-1 and Tier-2 version byte).
+///   3 — PAPH-X 1.0–1.1: the sampling of SPEC-003 §6
+///   4 — PAPH-X 1.2 (docs/SPEC-W4-paph-wire4.md): the same sections, sampled
+///       so that a mirrored or quarter-turned image hashes to the mirrored or
+///       quarter-turned sections exactly, on canvases of any size
+pub const WIRE_3: u8 = 3;
+pub const WIRE_4: u8 = 4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Scoring {
@@ -58,6 +67,9 @@ pub struct Config {
     pub sketch_count: usize,
     /// SPEC-004.2 §3 — which keypoint-selection rule builds Tier 2.
     pub kp_select: i32,
+    /// `WIRE_4` (the default) or `WIRE_3` — which wire format `hash` writes.
+    /// Comparisons read either; a pair of different formats is refused.
+    pub wire: u8,
 
     // --- compare time: free to re-derive at any moment ---
     pub hamming_t: i32,
@@ -85,6 +97,7 @@ impl Default for Config {
             kp_count: MAX_KP_COUNT,
             sketch_count: 32,
             kp_select: KP_SELECT_QUALITY,
+            wire: WIRE_4,
 
             hamming_t: 8,
             evidence: Evidence::Lift,
@@ -125,6 +138,9 @@ impl Config {
         }
         if self.sketch_count > 32 {
             return Err("sketchCount out of range (tier 1 holds 32)");
+        }
+        if self.wire != WIRE_3 && self.wire != WIRE_4 {
+            return Err("wire must be 3 or 4");
         }
         Ok(())
     }

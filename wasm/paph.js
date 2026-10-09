@@ -34,21 +34,23 @@
  *     const paph = await init(wasm);
  */
 
-const ABI = 3;
+const ABI = 4;
 const X_ABI = 1;
 const SI_ABI = 1;
 const SI_SIG_BYTES = 104;
 const SI_MAX_KEYS = 54;
 /* PAPH-SI family names, in signature order (cells, then the two MinHash families) */
 const SI_FAMILIES = ['runs', 'tone', 'pal', 'shape', 'sil', 'kpgeo', 'local', 'band'];
-const WIRE_VERSION = 3;
+/* the wire format hash() writes by default; { wire: 3 } writes 1.0–1.1's */
+const WIRE_VERSION = 4;
 
 /* Field order MUST match config_from in rust/src/abi.rs. */
 const DEFAULTS = Object.freeze({
   foldMatte: true, divideUpscale: true, matteTol: 24, peakRadius: 5, foldInvert: true,
   localWindows: [8, 16], localCount: 128, kpCount: 512, kpSelect: 1, sketchCount: 32,
   hammingT: 8, evidence: 'lift', confidenceAt: 16, scoring: 'weighted', ragEndpoint: 'rank',
-  geoEnabled: true, geoConfAt: 16, geoEps: 1600, geoMinCorr: 8, mirrorHypothesis: true
+  geoEnabled: true, geoConfAt: 16, geoEps: 1600, geoMinCorr: 8, mirrorHypothesis: true,
+  wire: 4
 });
 const STATES = ['Unrelated', 'Related', 'Suspected', 'Copy', 'Identical', 'Indeterminate', 'NotCopy'];
 const EXECUTIONS = ['FAST', 'DEFERRED', 'FALLBACK', 'AUDIT'];
@@ -238,7 +240,8 @@ export class XSide {
       return this.engine.u8().slice(p, p + ROUTE_RECORD_BYTES);
     } finally { this.engine.x.paph_free(p, ROUTE_RECORD_BYTES); }
   }
-  /** the PAX1 sidecar: cache it beside the wires and hand it to xprepare to skip the derivation */
+  /** the PAX1 sidecar (version 2: bound to this side's Tier 1 and to the X profile): cache it
+      beside the wires and hand it to xprepare to skip the derivation */
   sidecar() {
     return this.engine.take(this.engine.x.paph_xsidecar(this.handle));
   }
@@ -253,10 +256,11 @@ export class XSide {
 /**
  * A PAPH-SI profile (.psi): six codebooks of 16 / 256 cells, the evidence
  * weights, the default threshold and budget, bound to one X profile.
- * `engine.siprofile()` is the shipped SI3-PROVISIONAL, bound to the shipped
- * X2-PROVISIONAL and fitted on the Pixa chain's artworks; SI2-PROVISIONAL (the
- * synthetic fit, bound to X2) and SI1-PROVISIONAL (1.1.0's, bound to X1) are
- * `docs/calibration/SI2-PROVISIONAL.psi` and `SI1-PROVISIONAL.psi`.
+ * `engine.siprofile()` is the shipped SI4-PROVISIONAL, bound to the shipped
+ * X3-PROVISIONAL and fitted on the Pixa chain's artworks hashed in wire 4;
+ * 1.1.2's SI3-PROVISIONAL (bound to X2), SI2-PROVISIONAL (the synthetic fit,
+ * bound to X2) and SI1-PROVISIONAL (1.1.0's, bound to X1) are
+ * `docs/calibration/SI3-PROVISIONAL.psi`, `SI2-…` and `SI1-…`.
  */
 export class SIProfile {
   constructor(engine, handle) {
@@ -500,7 +504,7 @@ export class Engine {
       o.kpCount | 0, o.sketchCount | 0, o.hammingT | 0, o.evidence === 'proportion' ? 1 : 0,
       o.confidenceAt | 0, o.scoring === 'weighted' ? 1 : 0, o.ragEndpoint === 'rank' ? 1 : 0,
       o.geoEnabled ? 1 : 0, o.geoConfAt | 0, o.geoEps | 0, o.mirrorHypothesis ? 1 : 0,
-      o.geoMinCorr | 0, o.kpSelect === 0 ? 0 : 1
+      o.geoMinCorr | 0, o.kpSelect === 0 ? 0 : 1, o.wire === 3 ? 3 : 4
     ];
     const d = this.dv();
     for (let i = 0; i < flat.length; i++) d.setInt32(this._cfg + 4 * i, flat[i], true);
@@ -553,7 +557,7 @@ export class Engine {
     let h;
     try { h = this.x.paph_prepare(p1, b1.length, p2, b2 ? b2.length : 0, opts && opts.strict ? 1 : 0); }
     finally { if (p1) this.x.paph_free(p1, b1.length); if (p2) this.x.paph_free(p2, b2.length); }
-    if (!h) throw new Error('paph: tier 1 refused (length, version or CRC)');
+    if (!h) throw new Error('paph: tier 1 refused (length, version, CRC or section table)');
     this.x.paph_prepared_info(h, this._info);
     const d = this.dv(), info = [0, 1, 2, 3].map(i => d.getInt32(this._info + 4 * i, true));
     return new Side(this, h, info);
@@ -598,7 +602,8 @@ export class Engine {
 
   /**
    * Comparator 42.  `a`, `b`: Sides or { t1, t2 }.  Options: `profile` (a
-   * Profile or .pcal bytes; default the shipped CAL-004-PROPOSED), `opts`
+   * Profile or .pcal bytes; default the shipped CAL-007-PROVISIONAL — 1.1's
+   * CAL-004-PROPOSED is `docs/calibration/CAL-004-PROPOSED.pcal`), `opts`
    * (compare-time config), `lean` (same verdict, `v3: null`, ~20% faster),
    * `json` (return the text instead of parsing it).
    *
@@ -644,7 +649,7 @@ export class Engine {
    * The gate passes a pair only on `geo_min_corr` (8) keypoint
    * correspondences or more, so it drops every copy of a work with fewer
    * keypoints, and some others, that comparator 42 would certify:
-   * `gate: false`, or `xrank` under its shipped X2 profile, keeps those
+   * `gate: false`, or `xrank` under its shipped X3 profile, keeps those
    * (docs/SEARCH.md §4).
    */
   rank(query, candidates, o) {
@@ -687,10 +692,12 @@ export class Engine {
 
   /**
    * A PAPH-X profile: `base` a Profile (or .pcal bytes; default the shipped
-   * CAL-004-PROPOSED), `x` the X artefact bytes (default the shipped
-   * X2-PROVISIONAL bound to that base; 1.0.0's X1-PROVISIONAL is
-   * `docs/calibration/X1-PROVISIONAL.pxcl`).  Check `status()`: a mismatch
-   * between the two makes every comparison Indeterminate.
+   * CAL-007-PROVISIONAL), `x` the X artefact bytes (default the shipped
+   * X3-PROVISIONAL's schedule bound to that base; 1.1's X2-PROVISIONAL and
+   * 1.0.0's X1-PROVISIONAL, both bound to CAL-004-PROPOSED, are
+   * `docs/calibration/X2-PROVISIONAL.pxcl` and `X1-PROVISIONAL.pxcl`).
+   * Check `status()`: a mismatch between the two makes every comparison
+   * Indeterminate.
    */
   xprofile(o) {
     o = o || {};
@@ -715,7 +722,8 @@ export class Engine {
   /**
    * Prepare a side for PAPH-X: `t1`, `t2` (or `{ t1, t2 }`), options
    * `{ strict, profile, sidecar }` — `sidecar` the PAX1 bytes a previous
-   * `XSide.sidecar()` returned (ignored when stale).
+   * `XSide.sidecar()` returned (ignored when it describes another side or
+   * profile, or is 1.1's version 1).
    */
   xprepare(t1, t2, opts) {
     if (t1 && t1.t1 && !(t1 instanceof Uint8Array)) { opts = t2; t2 = t1.t2; t1 = t1.t1; }
@@ -734,7 +742,7 @@ export class Engine {
       if (p2) this.x.paph_free(p2, b2.length);
       if (ps) this.x.paph_free(ps, sc.length);
     }
-    if (!h) throw new Error('paph: tier 1 refused (length, version or CRC)');
+    if (!h) throw new Error('paph: tier 1 refused (length, version, CRC or section table)');
     this.x.paph_xprepared_info(h, this._info);
     const d = this.dv(), info = [0, 1, 2, 3].map(i => d.getInt32(this._info + 4 * i, true));
     return new XSide(this, h, info);
@@ -764,7 +772,7 @@ export class Engine {
     try {
       const xp = this._xprofile(o.profile);
       const v = this.x.paph_xscreen(this.config(o.opts), xp, this._xside(a, temps, o.profile), this._xside(b, temps, o.profile), out);
-      if (v < 0) throw new Error('paph: xscreen refused (profiles)');
+      if (v < 0) throw new Error('paph: xscreen refused (profiles or wire formats differ)');
       r = new Int32Array(this.x.memory.buffer.slice(out, out + 4 * XSCREEN_FIELDS));
     } finally { this.x.paph_free(out, 4 * XSCREEN_FIELDS); for (const s of temps) s.free(); }
     return {
@@ -851,7 +859,7 @@ export class Engine {
   }
 
   /**
-   * A PAPH-SI profile from its artefact bytes, or the shipped SI3-PROVISIONAL
+   * A PAPH-SI profile from its artefact bytes, or the shipped SI4-PROVISIONAL
    * without them.  Its `xid()` names the X profile it was fitted against:
    * signatures and queries refuse sides prepared under any other.
    */
@@ -901,7 +909,7 @@ export class Engine {
         finally { if (p1) this.x.paph_free(p1, b1.length); if (p2) this.x.paph_free(p2, b2.length); }
       }
       if (r === -2) throw new Error('paph: the side was prepared under another X profile than the SI profile is bound to');
-      if (r === -3) throw new Error('paph: tier 1 refused (length, version or CRC)');
+      if (r === -3) throw new Error('paph: tier 1 refused (length, version, CRC or section table)');
       if (r !== 0) throw new Error('paph: sisig refused');
       bytes = this.u8().slice(out, out + SI_SIG_BYTES);
     } finally { this.x.paph_free(out, SI_SIG_BYTES); }

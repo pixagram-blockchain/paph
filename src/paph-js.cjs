@@ -1,5 +1,6 @@
 /*! paph4.js — PAPH v4 comparator, JavaScript engine.  Implements PAPH-SPEC-004
- *  on the UNCHANGED v3 wire (format 3, comparator 4).  Deterministic,
+ *  on the v3 wire layout (formats 3 and 4 — docs/SPEC-W4-paph-wire4.md;
+ *  a pair of mixed formats is refused).  Deterministic,
  *  integer-only, zero dependencies; requires the v3 engine (wire.cjs) for the
  *  wire, the six untouched structural channels, and the shared geometric
  *  primitives.
@@ -98,13 +99,15 @@ function hex(bytes) {
   return s;
 }
 
-/* §7 — hash-profile identity over the ten hash-time fields, LE i32 each. */
+/* §7 — hash-profile identity over the ten hash-time fields, LE i32 each.  The
+   byte after the tag is the wire format: 3 keeps every 1.0–1.1 identity, and
+   no wire-4 identity equals one (an absent `wire` is the default, 4). */
 function hashProfileId(o) {
   var f = [o.foldMatte ? 1 : 0, o.divideUpscale ? 1 : 0, o.matteTol, o.peakRadius,
            o.foldInvert ? 1 : 0, o.localWindows[0], o.localWindows[1],
            o.localCount, o.kpCount, o.sketchCount];
   var m = new Uint8Array(8 + 40);
-  m.set([0x50, 0x41, 0x50, 0x48, 0x2d, 0x48, 0x50, 0x03]); /* "PAPH-HP" + 0x03 */
+  m.set([0x50, 0x41, 0x50, 0x48, 0x2d, 0x48, 0x50, o.wire === 3 ? 0x03 : 0x04]); /* "PAPH-HP" + format */
   for (var i = 0; i < 10; i++) {
     var v = f[i] | 0, b = 8 + i * 4;
     m[b] = v & 0xff; m[b + 1] = (v >>> 8) & 0xff; m[b + 2] = (v >>> 16) & 0xff; m[b + 3] = (v >>> 24) & 0xff;
@@ -498,7 +501,8 @@ function cal003() {
   };
 }
 
-/* SPEC-004.2 Part II — CAL-004-PROPOSED, the comparator-42 default.
+/* SPEC-004.2 Part II — CAL-004-PROPOSED, the comparator-42 default of 1.0–1.1
+ * (CAL-007-PROVISIONAL, below, from 1.2).
  *
  * Every DECISION constant is CAL-003's, unchanged.  That is the claim 4.2 is
  * making: a larger budget changes how well the pair is measured, not what a
@@ -549,6 +553,21 @@ function cal004() {
        of it. */
     lutGeoDiversity: [[0, 6000], [2000, 8000], [4000, 10000], [10000, 10000]]
   };
+}
+
+/* PAPH-X 1.2 — CAL-007-PROVISIONAL, the comparator-42 default from 1.2: CAL-004
+ * with ONE bar moved, the moderate structural bar (thresholds[2], the lattice's
+ * "partial agreement" arm for structure alone) from 2400 to 3300, fitted on the
+ * Pixa chain's artworks (docs/calibration/CAL-007-PROVISIONAL.log).  No Copy can
+ * move; a pair whose only evidence is structure between the two bars reads
+ * Related instead of Suspected.  rust/src/calibration.rs `cal007` is the
+ * reference; docs/calibration/CAL-007-PROVISIONAL.pcal its encoding. */
+function cal007() {
+  var p = cal004();
+  var n = 'CAL-007-PROVISIO';
+  for (var i = 0; i < 16; i++) p.name[i] = n.charCodeAt(i);
+  p.thresholds[2] = 3300;
+  return p;
 }
 
 /* =============================================================== local v4
@@ -1270,7 +1289,9 @@ function topology42(mm, cov, g, dominantAt, geoMinCorr) {
  * §8.1, §15, §24 — compare_v4: profile binding, live Indeterminate paths,
  * canonical argument order, the v4 verdict with the full v3 reading aboard. */
 var R_CORRUPT = 'CORRUPT', R_PROFILE_MISMATCH = 'PROFILE_MISMATCH',
-    R_PROFILE_UNSUPPORTED = 'PROFILE_UNSUPPORTED', R_LIMIT = 'LIMIT';
+    R_PROFILE_UNSUPPORTED = 'PROFILE_UNSUPPORTED', R_LIMIT = 'LIMIT',
+    /* a wire-3 and a wire-4 side: refused, never compared across formats */
+    R_WIRE_MISMATCH = 'WIRE_MISMATCH';
 var CHANNEL_ORDER = ['dct', 'local', 'shape', 'topology', 'runs', 'palette', 'silhouette'];
 function indeterminate(reasons, P) {
   return { comparator: COMPARATOR, verdict: 'Indeterminate', class: '', basis: [], reasons: reasons,
@@ -1338,7 +1359,7 @@ function compareV41(aT1, aT2, bT1, bT2, opts, P, hpA, hpB) {
   try {
     v3 = wire.compare({ t1: aT1, t2: aT2 || undefined }, { t1: bT1, t2: bT2 || undefined }, o);
   } catch (e) {
-    var rc = indeterminate([R_CORRUPT], P);
+    var rc = indeterminate([e && e.code === 'WIRE_MISMATCH' ? R_WIRE_MISMATCH : R_CORRUPT], P);
     rc.comparator = COMPARATOR_V41; rc.geoWeakInliers = 0; rc.screen = null;
     return rc;
   }
@@ -1463,7 +1484,7 @@ function compareV42(aT1, aT2, bT1, bT2, opts, P, hpA, hpB) {
   }
   var o = bind(opts, P), v3;
   try { v3 = wire.compare({ t1: aT1, t2: aT2 || undefined }, { t1: bT1, t2: bT2 || undefined }, o); }
-  catch (e) { return indeterminate42([R_CORRUPT], P); }
+  catch (e) { return indeterminate42([e && e.code === 'WIRE_MISMATCH' ? R_WIRE_MISMATCH : R_CORRUPT], P); }
 
   /* P4 — canonical argument order, the rule verbatim from 4 and 4.1. */
   var swapped = canon42(aT1, bT1);
@@ -1566,7 +1587,9 @@ return {
   VERSION: '4.2', COMPARATOR: COMPARATOR_V42, CONTAINER: CONTAINER_V3, backend: 'js',
 
   hash: hashChecked, compare: compareV42, screen: screenV42,
-  cal: cal004, calibration: cal004,
+  /* the shipped calibration: CAL-007-PROVISIONAL from 1.2; CAL-004-PROPOSED
+     (1.0–1.1) stays computable for verdicts issued under it */
+  cal: cal007, calibration: cal007, cal004: cal004, cal007: cal007,
 
   /* frozen, for reproducing verdicts issued under 4.1 */
   compare41: compareV41, screen41: screenV41, cal41: cal003,
@@ -1597,7 +1620,7 @@ return {
 
   MAX_WIDTH: MAX_WIDTH, MAX_HEIGHT: MAX_HEIGHT, MAX_PIXELS: MAX_PIXELS,
   R_CORRUPT: R_CORRUPT, R_PROFILE_MISMATCH: R_PROFILE_MISMATCH,
-  R_PROFILE_UNSUPPORTED: R_PROFILE_UNSUPPORTED, R_LIMIT: R_LIMIT,
+  R_PROFILE_UNSUPPORTED: R_PROFILE_UNSUPPORTED, R_LIMIT: R_LIMIT, R_WIRE_MISMATCH: R_WIRE_MISMATCH,
   _internal: { assignBags: assignBags, assignBagsWith: assignBagsWith, bitrevBag: bitrevBag,
                houghVerifyW: houghVerifyW, weakInliers: weakInliers,
                geoMeasure41: geoMeasure41, gnControl41: gnControl41, wire: wire,

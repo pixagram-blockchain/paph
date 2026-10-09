@@ -2,7 +2,7 @@
 'use strict';
 /* PAPH 4.2 evidence bench — application layer.
    The engines below this line are the shipped files, inlined so the bench stays
-   one file you can hand to anyone: paph3 (the v3 wire), paph4 (comparator 4 and
+   one file you can hand to anyone: paph3 (the wire, format 4 from 1.2), paph4 (comparator 4 and
    42), calCore (the calibration loop).  Nothing here re-implements them. */
 var W = window.paphWire, V = window.paphjs, CC = window.calCore;
 var P = W;   /* the wire layer, by its old short name inside this file */

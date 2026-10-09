@@ -27,7 +27,7 @@
      keeps a reading even when no model clears the acceptance floor.</p>
   <div class="chipline">
     <span class="chip hero">Comparator 42</span>
-    <span class="chip" id="profileChip">CAL-004-PROPOSED</span>
+    <span class="chip" id="profileChip">CAL-007-PROVISIO</span>
     <span class="chip" id="engineChip">Engine · JavaScript</span>
     <span class="chip">Integer only</span>
     <span class="chip">Runs entirely in this page</span>
@@ -200,9 +200,10 @@
 <section id="s-wire">
   <div class="sec-head">
     <h2><span class="num">08</span>Tier 1 wire</h2>
-    <span class="ref mono">§6 — 3952 bytes, unchanged by 4.2</span>
+    <span class="ref mono">§6 · SPEC-W4 — 3952 bytes, the layout unchanged</span>
   </div>
-  <p class="lede">The comparator moved; the wire did not. Segmented by real byte offsets, with the section
+  <p class="lede">4.2 moved the comparator, not the wire; 1.2's wire 4 resamples the DCT, the shapes and the
+     silhouette inside the same offsets. Segmented by real byte offsets, with the section
      table <b>on the wire</b> rather than compiled into constants — this family has already paid once for a
      stale offset after a section was inserted. Hover a segment to isolate it in the hex below.</p>
   <div class="ribbon" id="ribbon"></div>
@@ -230,13 +231,13 @@
 <footer class="foot">
   Runs entirely in this page. Nothing is uploaded and nothing is fetched — no network at all, fonts
   included. Two engines are inlined: the Rust reference compiled to WebAssembly (SIMD128, used whenever the
-  browser has it), and the JavaScript one — <code>paphWire</code> (the v3 wire) and <code>paphjs</code>
+  browser has it), and the JavaScript one — <code>paphWire</code> (the wire, format 4) and <code>paphjs</code>
   (comparator 42, with 41 frozen beside it), from the shipped package files. They agree byte for byte, on
   wires and on reports; section 09 checks the second claim on every pair you compare.
   <br><br>
-  Three limits, stated rather than hidden. <b>CAL-003 is proposed, not blessed</b> — its thresholds and all
-  nine tables come from a 32-work development corpus whose labels were inferred by their author, not from
-  moderation reports. <b>A shared asset looks exactly like a partial copy</b>: two unrelated works that
+  Three limits, stated rather than hidden. <b>CAL-007 is provisional, not blessed</b> — its thresholds and
+  tables descend from CAL-003's, fitted on a 32-work development corpus whose labels were inferred by their
+  author, not from moderation reports; one bar was moved on 177 artworks of the Pixa chain. <b>A shared asset looks exactly like a partial copy</b>: two unrelated works that
   embed the same licensed tile produce real, verified geometry, and no threshold separates that from a
   genuine crop, because the difference is provenance and provenance is not in the pixels. And a
   colour-inverted copy is still carried by the structural channels only: inverting flips every descriptor

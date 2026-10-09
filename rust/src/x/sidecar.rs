@@ -2,8 +2,11 @@
 //!
 //! ```text
 //!   magic       "PAX1"
-//!   version     u16 = 1
-//!   flags       u16
+//!   version     u16 = 2
+//!   flags       u16 — bits 0–7 the Tier-1 format the side was hashed in
+//!               (3 or 4); bit 8 set when its keypoints are Tier 2's (clear:
+//!               the Tier-1 sketch)
+//!   t1_crc      u32 — the checksum the side's Tier 1 carries
 //!   profile_id  32 bytes  — the X profile the structures were built under
 //!   route       136 bytes — XRoute record (128 + metadata)
 //!   anchors     u16 n, then n x u16  — the anchor order
@@ -14,8 +17,13 @@
 //!
 //! Content-derived from the wire: safe to cache, discard, recompute or
 //! regenerate when the profile changes.  Never consensus state.  A sidecar
-//! that does not decode, or was built under another profile, is ignored and
-//! the structures are rebuilt from the wire (§38).
+//! that does not decode, was built under another profile, or from another
+//! side — another Tier 1 (its checksum), another format, the sketch where the
+//! side now has Tier 2 or the reverse — is ignored and the structures are
+//! rebuilt from the wire (§38).  Version 1 (1.0–1.1) bound only the profile
+//! and the keypoint count, so a store re-hashed in wire 4 could have handed
+//! a wire-3 side's route to the wire-4 side of the same work; 1.2 refuses
+//! every version-1 sidecar and the structures are rebuilt once.
 
 use super::bucket::XBucketIndex;
 use super::prepared::XPrepared;
@@ -25,13 +33,22 @@ use crate::prepared::Prepared;
 use crate::wire::crc32;
 
 const MAGIC: &[u8; 4] = b"PAX1";
+const VERSION: u16 = 2;
+const HEAD: usize = 44;
+
+/// The side a sidecar describes, as its flags and Tier-1 checksum record it.
+fn binding(p: &Prepared) -> (u16, u32) {
+    (p.t1.version as u16 | if p.tier2 { 0x100 } else { 0 }, p.t1.crc)
+}
 
 pub fn encode(x: &XPrepared) -> Vec<u8> {
     let n = x.index.n;
-    let mut b = Vec::with_capacity(48 + ROUTE_RECORD_BYTES + 2 + 2 * n + 2 + 2 * n * LSH_PROJECTIONS + 2 * LSH_PROJECTIONS * 257 + 3 * LSH_PROJECTIONS * n + 4);
+    let mut b = Vec::with_capacity(HEAD + 4 + ROUTE_RECORD_BYTES + 2 + 2 * n + 2 + 2 * n * LSH_PROJECTIONS + 2 * LSH_PROJECTIONS * 257 + 3 * LSH_PROJECTIONS * n + 4);
+    let (flags, t1_crc) = binding(&x.p);
     b.extend_from_slice(MAGIC);
-    b.extend_from_slice(&1u16.to_le_bytes());
-    b.extend_from_slice(&0u16.to_le_bytes());
+    b.extend_from_slice(&VERSION.to_le_bytes());
+    b.extend_from_slice(&flags.to_le_bytes());
+    b.extend_from_slice(&t1_crc.to_le_bytes());
     b.extend_from_slice(&x.xid);
     b.extend_from_slice(&x.route.to_bytes());
     b.extend_from_slice(&(x.order.len() as u16).to_le_bytes());
@@ -54,21 +71,22 @@ pub fn encode(x: &XPrepared) -> Vec<u8> {
     b
 }
 
-/// Rebuild an `XPrepared` from a prepared side and its sidecar.  `None`
-/// when the sidecar is not usable for this side under this profile — the
-/// caller then builds from the wire.
+/// Rebuild an `XPrepared` from a prepared side and its sidecar.  `Err`,
+/// handing the side back, when the sidecar is not usable for this side under
+/// this profile — the caller then builds from the wire.
 pub fn decode(p: Prepared, xb: &XBound, b: &[u8]) -> Result<XPrepared, Prepared> {
     let n = p.kp.len();
-    let need = 40 + ROUTE_RECORD_BYTES + 2 + 2 * n + 2 + 2 * n * LSH_PROJECTIONS + 2 * LSH_PROJECTIONS * 257 + 3 * LSH_PROJECTIONS * n + 4;
-    if b.len() != need || &b[0..4] != MAGIC || u16::from_le_bytes([b[4], b[5]]) != 1 {
+    let need = HEAD + ROUTE_RECORD_BYTES + 2 + 2 * n + 2 + 2 * n * LSH_PROJECTIONS + 2 * LSH_PROJECTIONS * 257 + 3 * LSH_PROJECTIONS * n + 4;
+    if b.len() != need || &b[0..4] != MAGIC || u16::from_le_bytes([b[4], b[5]]) != VERSION {
         return Err(p);
     }
     let c = crc32(&b[..b.len() - 4]);
     let want = u32::from_le_bytes([b[b.len() - 4], b[b.len() - 3], b[b.len() - 2], b[b.len() - 1]]);
-    if c != want || b[8..40] != xb.xid {
+    let (flags, t1_crc) = binding(&p);
+    if c != want || u16::from_le_bytes([b[6], b[7]]) != flags || u32::from_le_bytes([b[8], b[9], b[10], b[11]]) != t1_crc || b[12..44] != xb.xid {
         return Err(p);
     }
-    let mut o = 40;
+    let mut o = HEAD;
     let Some(route) = XRoute::from_bytes(&b[o..o + ROUTE_RECORD_BYTES]) else { return Err(p) };
     o += ROUTE_RECORD_BYTES;
     let no = u16::from_le_bytes([b[o], b[o + 1]]) as usize;
@@ -169,5 +187,36 @@ mod tests {
         other.hot_bucket_cap += 1;
         let xb2 = XBound::new(xb.base.clone(), other);
         assert!(decode(Prepared::new(&f.t1, Some(&f.t2)).unwrap(), &xb2, &b).is_err(), "another profile");
+    }
+
+    /// A sidecar describes one side: the same work's other format, or the
+    /// same Tier 1 read without its Tier 2, refuses it; and 1.1's version 1,
+    /// which bound neither, is refused outright.
+    #[test]
+    fn sidecar_is_bound_to_its_side() {
+        let xb = XBound::shipped();
+        let rot = crate::keypoints::RotCache::new(&crate::keypoints::pattern());
+        let px = crate::x::testimg::image(5, 140, 100);
+        let f4 = hash(&px, 140, 100, &Config::default(), &rot);
+        let f3 = hash(&px, 140, 100, &Config { wire: crate::config::WIRE_3, ..Config::default() }, &rot);
+        let side = |f: &crate::wire::Fingerprint, t2: bool| Prepared::new(&f.t1, if t2 { Some(&f.t2[..]) } else { None }).unwrap();
+        let (b4, b3) = (encode(&XPrepared::new(side(&f4, true), &xb)), encode(&XPrepared::new(side(&f3, true), &xb)));
+        // the formats share the keypoints, so only the binding tells them apart
+        assert_eq!(f3.t2[32..], f4.t2[32..], "the two formats' keypoint records");
+        assert_eq!(b3.len(), b4.len());
+        assert!(decode(side(&f4, true), &xb, &b4).is_ok() && decode(side(&f3, true), &xb, &b3).is_ok());
+        assert!(decode(side(&f4, true), &xb, &b3).is_err(), "a wire-3 sidecar on the wire-4 side");
+        assert!(decode(side(&f3, true), &xb, &b4).is_err(), "a wire-4 sidecar on the wire-3 side");
+        let sketch = encode(&XPrepared::new(side(&f4, false), &xb));
+        assert!(decode(side(&f4, false), &xb, &sketch).is_ok());
+        assert!(decode(side(&f4, false), &xb, &b4).is_err() && decode(side(&f4, true), &xb, &sketch).is_err(), "tier 2 against the sketch");
+        // 1.1's layout: version 1, flags 0, no Tier-1 checksum
+        let mut v1 = b"PAX1".to_vec();
+        v1.extend_from_slice(&1u16.to_le_bytes());
+        v1.extend_from_slice(&0u16.to_le_bytes());
+        v1.extend_from_slice(&b3[12..b3.len() - 4]);
+        let c = crc32(&v1);
+        v1.extend_from_slice(&c.to_le_bytes());
+        assert!(decode(side(&f3, true), &xb, &v1).is_err(), "version 1");
     }
 }

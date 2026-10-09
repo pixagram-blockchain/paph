@@ -10,6 +10,9 @@ import m from './wire.cjs';
 
 export const VERSION = m.VERSION;
 export const WIRE_VERSION = m.VERSION;
+export const WIRE_3 = m.WIRE_3;
+export const WIRE_4 = m.WIRE_4;
+export const E_WIRE_MISMATCH = m.E_WIRE_MISMATCH;
 export const T1_BYTES = m.T1_BYTES;
 export const KP_REC = m.KP_REC;
 export const KP_MAX = m.KP_MAX;

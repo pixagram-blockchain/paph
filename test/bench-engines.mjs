@@ -1,7 +1,8 @@
 /**
  * Engine timings: the JavaScript reference, the previous WebAssembly module
  * (paph-js 4.2.2, when its checkout is next to this one), and this one — SIMD
- * and baseline.  Prints a markdown table.
+ * and baseline, hashing wire 4 (the default), and the SIMD build hashing
+ * wire 3 beside it.  Prints markdown tables.
  *
  *     node test/bench-engines.mjs [--old ../paph-js] [--reps 5]
  */
@@ -45,16 +46,22 @@ const x = (a, b) => (a === null || b === null) ? '' : ` (${(a / b).toFixed(1)}×
 const S = scene(288, 200, 9137), SB = scene(1024, 768, 31), W = work(512, 384, 7), P = sprite(96, 96, 5);
 const images = [['sprite 96×96', P], ['scene 288×200', S], ['work 512×384', W], ['scene 1024×768', SB]];
 
+/* V8 compiles a WebAssembly function with its baseline tier first and the
+   optimising tier after some calls: warm both builds and both formats up
+   on the small sprite, or the first image's column times the baseline tier */
+for (let i = 0; i < 20; i++) { simd.hash(P); base.hash(P); simd.hash(P, { wire: 3 }); }
+
 console.log(`\n### Hash (ms per image, best of ${REPS})\n`);
-console.log('| image | JS reference | WASM 4.2.2 | WASM SIMD | WASM baseline |');
-console.log('|---|---:|---:|---:|---:|');
+console.log('| image | JS reference | WASM 4.2.2 | WASM SIMD | WASM baseline | WASM SIMD, wire 3 |');
+console.log('|---|---:|---:|---:|---:|---:|');
 for (const [name, im] of images) {
   const n = im.w * im.h > 300000 ? 2 : 8;
   const j = time(() => V.hash(im), n);
   const o = old ? time(() => old.eng.hash(im), n) : null;
   const s = time(() => simd.hash(im), n);
   const b = time(() => base.hash(im), n);
-  console.log(`| ${name} | ${ms(j)} | ${ms(o)}${x(o, s)} | **${ms(s)}**${x(j, s)} | ${ms(b)} |`);
+  const s3 = time(() => simd.hash(im, { wire: 3 }), n);
+  console.log(`| ${name} | ${ms(j)} | ${ms(o)}${x(o, s)} | **${ms(s)}**${x(j, s)} | ${ms(b)} | ${ms(s3)} |`);
 }
 
 const P1 = V.cal();

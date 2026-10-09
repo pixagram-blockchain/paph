@@ -9,6 +9,7 @@
 | Status | **Proposal.** Nothing here is measured yet. Every number is a target or a hypothesis, and §14 says which. |
 | Inputs | PAPH-SPEC-002 (descriptive spec of BOF + L2), the 16-work real corpus, the measurements in both |
 | Budget | Relaxed. See §4. |
+| Format 4 | `@pixagram/paph-x` 1.2 writes this layout as format 4 ([SPEC-W4](SPEC-W4-paph-wire4.md)): the same sections, the DCT, the shapes section and the silhouette sampled so that a mirror or a quarter turn moves them exactly. Format 3, as specified here, is still written on request. |
 
 ---
 

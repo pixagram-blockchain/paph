@@ -1,43 +1,56 @@
 # PAPH-SI — the screening index
 
-`@pixagram/paph-x` 1.1.2 · SI ABI 1 · feature derivation 1 · profile **SI3-PROVISIONAL**
-(`dfe99f33b6a8dfc0…`, 5,334 bytes), bound to X2-PROVISIONAL (`27993afaaca76d11…`) and fitted on the
-artworks of the Pixa chain (§9.7). Two profiles stay beside it as artefacts. SI2-PROVISIONAL
-(`abfef6f814c4915b…`, 1.1.1's default) is the synthetic fit bound to X2: 1.1.0's SI1-PROVISIONAL
-(`ca0ff1047b03cadd…`) bound to the X profile 1.1.1 ships — the same codebooks, weights, threshold
-and budget; X2 changes the route's global words, not the MinHash lanes SI bands, so under X2 SI2
-signs every work with the bytes SI1 signs it with under X1. SI1 stays bound to X1. The wire (3),
-comparator 42, CAL-004-PROPOSED and X2 do not move: the 3,160-case equivalence digest is
-byte-identical.
+`@pixagram/paph-x` 1.2.0 · SI ABI 1 · feature derivation 1 · profile **SI4-PROVISIONAL**
+(`aa8ce6d311f4ce56…`, 5,334 bytes), bound to X3-PROVISIONAL (`8af84dd0abb12192…`) and fitted on the
+artworks of the Pixa chain hashed in wire 4 (§9.8): 1.1.2's chain fit, re-run on the wires 1.2
+writes. Three profiles stay beside it as artefacts. SI3-PROVISIONAL (`dfe99f33b6a8dfc0…`, 1.1.2's
+default, §9.7) is the same fit on the same works' wire-3 hashes, bound to X2-PROVISIONAL
+(`27993afaaca76d11…`). SI2-PROVISIONAL (`abfef6f814c4915b…`, 1.1.1's default) is the synthetic fit
+bound to X2: 1.1.0's SI1-PROVISIONAL (`ca0ff1047b03cadd…`) bound to the X profile 1.1.1 ships — the
+same codebooks, weights, threshold and budget; X2 changes the route's global words, not the
+MinHash lanes SI bands, so under X2 SI2 signs every work with the bytes SI1 signs it with under X1.
+SI1 stays bound to X1. 1.2 moves the wire (format 4, [SPEC-W4](SPEC-W4-paph-wire4.md): the same
+sections, the DCT, the shapes and the silhouette sampled so that a mirror or a quarter turn moves
+them exactly), comparator 42's
+calibration (CAL-007-PROVISIONAL) and the X profile (X3); the feature derivation does not move,
+and neither does the signature layout. A signature does not record the wire format it was derived
+from: an index holds one format's signatures (§7.4).
 
 PAPH-SI answers the one question a search engine asks before any comparison: *given one new
 work, which of the N stored works are worth handing to XRank?* — without reading the others.
 It is the "product-quantized screening index" of the design note this document answers (§2):
 built, measured, and corrected where the measurements disagreed with the note.
 
-The tables of §3–§5 and §9.1–§9.4 are SI2's, on the synthetic corpus: printed by
+The tables of §3–§5 and §9.1–§9.4 are SI2's, on the synthetic corpus hashed in wire 3: printed by
 `rust/target/release/sibench fit` and `sibench eval` (`npm run bench:si` runs the latter), §3.3's
 G3 column and second partition and the synthetic counts of §11 by `sibench route` and
 `sibench lost`, on one core of a shared two-core container; the full output of those runs is
-`docs/calibration/X2-PROVISIONAL.log` (1.1.1, X2 and SI2). 1.1.0's runs, under X1 and SI1, are
+`docs/calibration/X2-PROVISIONAL.log` (1.1.1, X2 and SI2). Those were 1.1.1's defaults; 1.2's run
+X3 and SI4 on a corpus hashed in wire 4, and take `--x2 --corpus corpus-w3.bin` to run as 1.1.1
+did: `sibench corpus --wire 3 --out corpus-w3.bin` hashes that corpus again byte for byte, and
+`sibench eval --x2 --corpus corpus-w3.bin` then prints every count of that log's eval again. 1.1.0's runs, under X1 and SI1, are
 `docs/calibration/SI1-PROVISIONAL.log`: the same SI tables, while what X2 changes — the route and
 gate counts of §11, XRank's column of §9.3 — and the timings differ. §9.7 — the chain's works, SI2
 against SI3 — and the real-work counts of §11 were printed by `sibench chain`, `sibench chainfit`,
 `sibench eval --corpus chain.bin`, `route --real`, `lost` and `doorprof --real` on the same
 machine; the full output, with SI3 and SI2 on the synthetic corpus, is
-`docs/calibration/SI3-PROVISIONAL.log` (1.1.2). None of them is a claim beyond those corpora and
-that machine. §9.5 extrapolates from them, under assumptions it states. §9.6 lists the measurements
+`docs/calibration/SI3-PROVISIONAL.log` (1.1.2). §9.8 — wire 4 and SI4 — was printed by the same
+commands on the same snapshot re-hashed in wire 4, and `sibench route` on both formats:
+`docs/calibration/SI4-PROVISIONAL.log` and `X3-PROVISIONAL.log` (1.2). None of them is a claim
+beyond those corpora and that machine. §9.5 extrapolates from them, under assumptions it states. §9.6 lists the measurements
 of the Python prototype that chose between design alternatives before the Rust implementation
 existed; the shipped harness does not reproduce them.
 
-**§0 is the answer, §2 the note ruling by ruling, §7 how to run it, §9.7 the chain's works.**
+**§0 is the answer, §2 the note ruling by ruling, §7 how to run it, §9.7 the chain's works, §9.8
+wire 4.**
 
 ---
 
 ## 0. What came out
 
 Items 1–6 are SI2 on the synthetic corpus (1.1.0 and 1.1.1); item 7 is Pixagram's own works, on
-which SI3 replaces SI2 as the shipped profile (1.1.2).
+which SI3 replaces SI2 as the shipped profile (1.1.2); item 8 is wire 4, on which SI4 replaces SI3
+(1.2).
 
 1. **The dimensions.** Six quantised families, each a 16-coarse / 256-fine cell hierarchy,
    derived from the wire alone: RUNS (stroke texture), TONE (luminance topology), PAL (palette
@@ -100,11 +113,20 @@ which SI3 replaces SI2 as the shipped profile (1.1.2).
    codebooks from the originals, the noise and the weights from their transformed copies) and
    measured on the other half, the fit's θ is the floor, 1, where it admits 0.48–0.90 % of the
    unrelated real pairs and keeps 85.7 % of the copies; SI2, at the same 1 %, keeps 71–72 %.
-   **SI3-PROVISIONAL**, the fit on all 174 bases (θ = 1), is the shipped profile from 1.1.2.
+   **SI3-PROVISIONAL**, the fit on all 174 bases (θ = 1), was the shipped profile in 1.1.2.
    Beside the exact keys it nominates 99.6 % of the real bases' comparator-42 copies, in-sample,
    and XRank reads Copy on all of them. It gives up most corner crops, pastes and downscales to
    the keys, it is out of distribution on synthetic art (22 % admitted there), and it is fitted
    on 174 works: provisional, to be re-fitted as the chain grows.
+8. **Wire 4 makes SHAPE and SIL exact under the square's symmetries; SI4 is SI3's fit on it**
+   (§9.8). On wire 3 the SHAPE cell of a mirrored or turned copy of a chain work equalled its
+   original's on 53 % (sides not multiples of 16) to 68 % (multiples) of copies, SIL's on 75–83 %,
+   TONE's on 93–100 %: the hasher's sampling, not the families (§3.3). Wire 4 samples
+   symmetrically, and all three hold on every D4 copy of both corpora — every quantised family
+   but KPGEO, which reads the keypoints wire 4 does not touch. SI4, the chain fit re-run on the
+   wire-4 hashes, keeps 85.0 % of held-out copies at 0.51–0.93 % of the unrelated real pairs
+   (SI3 on wire 3: 85.7 % at 0.48–0.90 %); beside the exact keys it nominates 99.6 % of the real
+   bases' copies in-sample, as SI3 did, and XRank under X3 reads Copy on all of them.
 
 ---
 
@@ -162,17 +184,17 @@ only. The third column is the design; §3.2 is what each family actually keeps.
 | **TONE** | 28 | `rag`: each colour adjacency's luminance-quantile gap and level `min(q, 255 − q)` and rank gap, mass-weighted, and the adjacency count; `brightness`: q95 − q5, q75 − q25, \|median − 128\|; `palette`: quantile mass folded about the middle | D4, the complement, order-keeping recolours | hue-scrambling recolours, crops |
 | **PAL** | 24 | `palette`: the 23 runner-up colours' population relative to the most frequent, and the colour count | D4, the complement, bijective recolours — it holds no colour at all | resampling (blends add colours), crops |
 | **SHAPE** | 41 | `shapes`: the 8-band luminance-quantile regions (largest first) — areas relative to the largest, isoperimetric / aspect / hole classes, count, the largest region's share of the frame, its radial profile sorted (D4 permutes the 32 rays) | D4, order-keeping recolours, the complement (it relabels bands without moving a boundary) | crops, rescales |
-| **SIL** | 87 | `silhouette`, works with real transparency (F_SIL — sprites, and works on a flat matte the front end folds to transparency; 75 % of the eval population): sorted radial profile, the two axis-aligned second moments as min and max (a quarter turn exchanges them) and \|m11\|, fill, components, aspect class, opaque share, transition histograms, the D4-canonical 8×8 occupancy code | D4, recolours, rescales | crops |
+| **SIL** | 87 | `silhouette`, works with real transparency (F_SIL — sprites, and works on a flat matte the front end folds to transparency; 75 % of the eval population): sorted radial profile, the two axis-aligned second moments as min and max (a quarter turn exchanges them) and \|m11\|, fill, components, aspect class, opaque share, the rows' and columns' transition histograms (wire 4: their opaque-run counts, which a mirror leaves alone), the D4-canonical 8×8 occupancy code | D4, recolours, rescales | crops |
 | **KPGEO** | 23 | keypoints (Tier 2, or the Tier-1 sketch without it; ≥ 8): radial distribution about their centroid in units of their RMS radius, scatter anisotropy, pyramid levels, orientation sectors folded by D4 and the complement, count | D4, the complement | recolours, crops |
 | LOCAL | 32 keys | XRoute's 64 local-code MinHash lanes, two per key | D4, integer upscales, crops (partly), pastes (partly) | resampling, re-dithering, the complement (measured) |
 | BAND | 16 keys | XRoute's 32 descriptor-band MinHash lanes (direct ∪ mirrored descriptors), two per key | mirrors, rotations, integer upscales | the complement, resampling, non-integer rescales |
 
 ### 3.2 Stability, measured
 
-The test the note's §12 asks for. For every eval base and each of its twenty variants, in both
-arrival orders: how often the copy lands in the query's own cell (exact) or in one of its four
-probe cells (probed); for the MinHash families, how often at least one band key is equal. The
-last row is a random eval distractor.
+The test the note's §12 asks for, on the synthetic corpus hashed in wire 3, under SI2 (1.1.1). For
+every eval base and each of its twenty variants, in both arrival orders: how often the copy lands
+in the query's own cell (exact) or in one of its four probe cells (probed); for the MinHash
+families, how often at least one band key is equal. The last row is a random eval distractor.
 
 | transform | runs | tone | pal | shape | sil | kpgeo | local | band |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -223,7 +245,10 @@ its regions' classes in the section's order, which breaks a tie in area by posit
 SIL trace their radial profiles from a centroid rounded down, along rays rounded half up; SIL's
 occupancy code samples an 8 × 8 grid laid from its bounding box's top-left corner; KPGEO reads
 keypoints detected on a pyramid whose blocks are laid from the image's. Which of them costs
-what is not established here.
+what is not established here. (1.2: for SHAPE and SIL it was the sampling — wire 4 orders the
+regions by keys a symmetry leaves alone, traces the rays from the exact centroid and closes the
+occupancy grid's cells, and both cells then hold on every D4 copy, §9.8; KPGEO reads keypoints,
+which wire 4 does not touch.)
 
 ### 3.3 Sampling grids, and what was left out
 
@@ -235,7 +260,7 @@ what is not established here.
 | long side > 128 px | 260 | 52 % | 71 % | 100 % | 98 % | 100 % | 79 % | 70 % | 57 % |
 
 The share of D4 copies (mirror, rot90, rot180, transpose; every base) whose reading equals the
-original's exactly, under two partitions of the same 120 bases: the DCT thumbnail's (both sides
+original's exactly, on wire 3, under two partitions of the same 120 bases: the DCT thumbnail's (both sides
 multiples of 16, or not) and the shapes section's (long side at most 128 px, where that
 section's grid is the pixel grid, or more). `sibench route` prints both partitions; `sibench
 eval` prints the first, without G3. SIL and KPGEO are read over the pairs where the family is
@@ -245,6 +270,8 @@ of canvases whose sides are multiples of 16 and on 41 % of the others: the thumb
 sit at ⌊i·w/16⌋, which a mirror or a quarter turn moves by a pixel otherwise, and the
 median-split magnitude bits flip under that shift. A family that should be D4-invariant and is
 not on most real canvas sizes cannot address copies, so the DCT section is not a PAPH-SI family.
+(Wire 4 closes the thumbnail's cells and rounds the transform once, and G0 then holds on every D4
+copy, docs/PAPH-X.md §2; SI4 keeps the feature derivation, so the section is still not a family.)
 G3 — XRoute's region word under route derivation 2, read from the shapes section — follows that
 section's grid instead (⌈w / c⌉ × ⌈h / c⌉ cells with c = ⌈long side / 128⌉, edges rounded down
 from the top-left corner): 217 of 220 at 128 px or less, 71 % above. SHAPE, SIL and KPGEO follow
@@ -386,17 +413,18 @@ without changing the order.
 
 ## 6. The profile (rust/src/x/si/profile.rs, fit.rs)
 
-`docs/calibration/SI3-PROVISIONAL.psi` (the shipped default, `SiProfile::si3()` and
-`SiProfile::shipped()`, bound to X2, fitted on the chain's works), `SI2-PROVISIONAL.psi`
-(`SiProfile::si2()`, the synthetic fit bound to X2, 1.1.1's default) and `SI1-PROVISIONAL.psi`
-(`SiProfile::si1()`, 1.1.0's, bound to X1), all three embedded in the crate, decoded and checked
-on load; a profile's SHA-256 is its identity. Layout, little-endian:
+`docs/calibration/SI4-PROVISIONAL.psi` (the shipped default, `SiProfile::si4()` and
+`SiProfile::shipped()`, bound to X3, fitted on the chain's works hashed in wire 4),
+`SI3-PROVISIONAL.psi` (`SiProfile::si3()`, 1.1.2's default: the same fit on wire-3 hashes, bound
+to X2), `SI2-PROVISIONAL.psi` (`SiProfile::si2()`, the synthetic fit bound to X2, 1.1.1's default)
+and `SI1-PROVISIONAL.psi` (`SiProfile::si1()`, 1.1.0's, bound to X1), all four embedded in the
+crate, decoded and checked on load; a profile's SHA-256 is its identity. Layout, little-endian:
 
 | bytes | field |
 |---|---|
 | 4 | magic `PXSI` |
 | 2 + 2 | profile version (1), feature derivation version (1) |
-| 16 | name (`SI3-PROVISIONAL`, zero-padded) |
+| 16 | name (`SI4-PROVISIONAL`, zero-padded) |
 | 32 | identity of the X profile whose route lanes are banded |
 | 1 + 1 + 1 + 1 | axes (4), bins (4), probes (4), families (6) |
 | per family | dims `u16`; mean `i32 × d`; projection `i32 × 4d`; edges `i64 × 12`; noise `i64 × 4`; weights `i32 × 3` |
@@ -413,8 +441,10 @@ profile refuses sides prepared under another (signatures and queries return −2
 
 **Fitting** (`sibench fit`, fit.rs) is offline and may use floating point: what it writes is
 integers, and nodes agree on the artefact's identity, not on how it was fitted. It is
-deterministic all the same: re-running `sibench fit` on the same corpus reproduces SI2 byte for
-byte, and `sibench fit --x1` SI1 (checked with `cmp`). Both were fitted on the corpus's fitting
+deterministic all the same: re-running `sibench fit --x2` on the same corpus reproduces SI2 byte
+for byte, and `sibench fit --x1` SI1 (checked with `cmp`; the corpus is the synthetic one hashed in
+wire 3, `--corpus corpus-w3.bin` in 1.2, whose `sibench fit` alone fits SI-SYNTHETIC-X3 on wire 4,
+no shipped profile). Both were fitted on the corpus's fitting
 split (4,000 background works, 2,432 noise pairs, 1,958 evidence pairs) in 0.07 s, with the same
 seed; they differ in the name and the bound X profile only. The codebooks come from the background
 population alone; the noise scales and the weights need copy pairs — so a production fit takes
@@ -430,9 +460,11 @@ comparator 42 calls a copy of it (`FitInput::related`; the synthetic fit, which 
 distractors, skips nothing, so SI2 is unchanged). A family that fewer than 40 originals carry keeps
 SI2's codebook — axes, edges and noise scales — and refits only its weights: on this snapshot SIL,
 which 17 works carry. It first fits each of the corpus's two folds and measures it on the other,
-against SI2 (§9.7's held-out table), then fits all 174 and writes SI3; re-running it reproduces SI3
-byte for byte. A re-fit on a later snapshot is a new profile with a new identity, and wants a new
-name (`--name`).
+against SI2 (§9.7's held-out table), then fits all 174 and writes the profile: SI3 in 1.1.2, on
+wire-3 hashes and bound to X2 (`sibench chainfit --x2 --corpus chain-w3.bin` in 1.2), SI4 in 1.2,
+on wire-4 hashes and bound to X3 (`sibench chainfit`); re-running either on its corpus reproduces
+it byte for byte. A re-fit on a later snapshot is a new profile with a new identity, and wants a
+new name (`--name`): `sibench` never writes other bytes over a committed artefact.
 
 ---
 
@@ -520,17 +552,23 @@ nomination; SI's is a share of the population, cut by the budget.
 * **Deletion.** Delete the work's postings and its `si_works` row; in memory, `remove(slot)`.
 * **Order of arrival.** As with the keys: index a work after querying with it, so each pair is
   examined once, by the later of the two.
+* **One wire format per index.** A signature does not record the format of the wires it was
+  derived from, and one work's cells differ between its wire-3 and its wire-4 hashes (SHAPE, SIL
+  and TONE, §9.8): an index holds one format's signatures — unlike the exact keys, which are the
+  same integers in both formats (docs/SEARCH.md §7). Migrating from 1.1, re-hash the works in
+  wire 4, re-derive every signature under SI4 and swap the postings; the `si_profile` column tells
+  the old rows from the new meanwhile (SI3's on wire 3, SI4's on wire 4).
 
 ---
 
 ## 8. API
 
-Rust (`paph::x::si`): `SiProfile::{shipped, si3, si2, si1}` (`shipped()` is SI3),
+Rust (`paph::x::si`): `SiProfile::{shipped, si4, si3, si2, si1}` (`shipped()` is SI4),
 `SiSig::{build, from_prepared, to_bytes, from_bytes}`,
 `SiQuery::{new, from_prepared, score, touches, levels}`, `scan`,
 `SiIndex::{add, remove, query, generation}`, `fit::{fit, fit_books, fit_on_books}`. C ABI:
-docs/WASM-ABI.md, *PAPH-SI (SI ABI 1)*. JavaScript (`paph.siprofile(bytes)` loads SI2 or SI1 from
-their artefacts; `sisig` and `siquery` take it as `{ profile }`):
+docs/WASM-ABI.md, *PAPH-SI (SI ABI 1)*. JavaScript (`paph.siprofile(bytes)` loads SI3, SI2 or SI1
+from their artefacts; `sisig` and `siquery` take it as `{ profile }`):
 
 ```js
 import { init, SI_SQL, siSqlParams } from '@pixagram/paph-x/wasm';
@@ -544,17 +582,17 @@ const slot = index.add(sig.bytes);                      // or one si_works row +
 // query
 const side = paph.xprepare(fp.t1, fp.t2);
 const q = paph.siquery(side);
-const { hits } = index.query(q);                        // [{ slot, score }], best first, θ = 1, B = 2000 (SI3)
+const { hits } = index.query(q);                        // [{ slot, score }], best first, θ = 1, B = 2000 (SI4)
 db.prepare(SI_SQL.query).all(...siSqlParams(q.plan())); // the same answer from SQLite / D1
 const keys = paph.indexKeys(fp, { query: true });       // the exact-key half of the funnel (SEARCH.md)
 // … union the two candidate sets, then paph.xrank(side, candidates)
 ```
 
 `npm run bench:si` runs the harness on the synthetic corpus (`rust/sibench.sh`; `--big` adds the
-scaling table, `--fit` re-fits SI2), `npm run bench:chain` on the chain's works
-(`rust/sibench.sh --chain`: a snapshot fetched on first use, `sibench chain`, the held-out
-`chainfit` — its re-fit written beside the corpus, not over SI3 — and the funnel under SI3);
-`npm run test:si` the cross-engine and SQL checks.
+scaling table, `--fit` a synthetic fit bound to X3, written beside the corpus), `npm run
+bench:chain` on the chain's works (`rust/sibench.sh --chain`: a snapshot fetched on first use,
+`sibench chain`, the held-out `chainfit` — its re-fit written beside the corpus, not over SI4 —
+and the funnel under SI4); `npm run test:si` the cross-engine and SQL checks.
 
 ---
 
@@ -925,20 +963,96 @@ works will move as the chain grows: on a new snapshot (delete rust/target/chain-
 `npm run bench:chain`), `sibench chainfit --corpus chain.bin --name NAME` fits a new profile
 into `docs/calibration/NAME.psi` — a new id; re-derive the signatures, §7.4.
 
+
+### 9.8 Wire 4 and SI4 (1.2)
+
+1.2 hashes in wire 4 ([SPEC-W4](SPEC-W4-paph-wire4.md)), and every number of §9.7 was measured
+again on the same snapshot re-hashed: `docs/calibration/SI4-PROVISIONAL.log` holds the runs,
+`X3-PROVISIONAL.log` the route's and the cells' symmetry tables in both formats.
+
+**The cells under the square's symmetries.** §3.2 listed, read from the code, what in the
+hasher's sampling could cost SHAPE and SIL under mirror and rotation — the shapes section's region
+order, the rounded centroid their rays start from, the occupancy grid laid from a corner — and
+that is what wire 4 changes. On every D4 copy (mirror, rot90, rot180, transpose) of every base, the
+share whose cell equals the original's (the wire-3 column is 1.1.2's run, `sibench route --corpus
+chain.bin --real` in `SI3-PROVISIONAL.log`; X3-PROVISIONAL.log reads the same wire-3 hashes under
+`--x2`, whose cells are SI2's — other codebooks, other cells: SHAPE 75 % · 72 %, SIL 75 % · 83 %):
+
+| family | the chain, wire 3, SI3 (16-multiple sides · other) | the chain, wire 4, SI4 | synthetic, wire 4, SI4 |
+|---|---:|---:|---:|
+| RUNS, PAL | 100 % · 100 % | 100 % · 100 % | 100 % · 100 % |
+| TONE | 100 % · 93 % | **100 % · 100 %** | 100 % · 100 % |
+| SHAPE | 68 % · 53 % | **100 % · 100 %** | 100 % · 100 % |
+| SIL | 75 % · 83 % | **100 % · 100 %** | 100 % · 100 % |
+| KPGEO | 39 % · 58 % | 39 % · 58 % | 65 % · 67 % |
+
+KPGEO reads the keypoints, which neither format samples differently: its shortfall (§3.2) is the
+keypoint pipeline's, and it stays.
+
+**SI4-PROVISIONAL** is `sibench chainfit` re-run on the wire-4 corpus: the same procedure, folds,
+draws and floor as SI3 (§9.7), the same feature derivation and signature layout, codebooks and
+weights refitted (SIL again keeps SI2's codebook: 17 works carry it), bound to X3 — θ = 1, budget
+2,000, 5,334 bytes, `aa8ce6d311f4ce56…`; `sibench chainfit --corpus chain.bin` reproduces it byte
+for byte. Held out:
+
+| fitted on → measured on | profile | θ | copies admitted | unrelated admitted |
+|---|---|---:|---:|---:|
+| fold A → fold B | SI2 (synthetic) | 2 | 95.6 % of 3,062 | 48.82 % of 7,310 |
+| fold A → fold B | chain fit, wire 4 | 1 | **85.0 %** | **0.93 %** |
+| fold B → fold A | SI2 (synthetic) | 2 | 95.1 % of 3,128 | 50.41 % of 7,654 |
+| fold B → fold A | chain fit, wire 4 | 1 | **85.0 %** | **0.51 %** |
+
+— against 85.7 % at 0.90 % / 0.48 % for the fit on wire 3. By transform the two fits agree within
+a few points: the wire-4 fit keeps a few fewer downscales and crops (down70 29 % against 34 %,
+resample90 85 % against 87 %, corner50 21 % against 22 %, crop80 98 % against 99 %), the same
+pastes (32 %) and crop67 copies (69 %), and every mirrored, rotated, integerly rescaled and
+channel-swapped copy (recolours 99 %). SHAPE's codebook spreads the chain's works over 114
+effective fine cells where SI3's spreads the same wire-4 works over 94.
+
+**The chain's pairs under SI4** (every pair of the 177 works, 31,152 queries): SI4 admits **0.40 %**
+of the 31,148 queries between works comparator 42 does not call Copy (SI3 on the same wire-4 works:
+0.50 %), and all 4 queries of its two Copy pairs.
+
+**The funnel on the real bases** (`sibench eval --corpus chain.bin`, the 4,000 synthetic eval
+distractors as the population, 3,062 Copy queries, in-sample for SI4):
+
+| | candidates per query | recall | 1.1.2 (SI3, wire 3) |
+|---|---:|---:|---:|
+| exact keys alone | 60.9 | 98.8 % | 98.8 % |
+| SI4 alone, θ = 1 | 36.5 (0.91 % of the population) | 85.2 % | 85.5 % (0.97 %) |
+| SI4 ∪ keys | 96.8 | **99.6 %** | 99.6 % |
+| SI4 ∪ keys → XRank (X3) says Copy | 96.8 | **99.6 %** | 99.6 % |
+
+What the union misses are again 7 % of the down70 copies (and no up150 copy, where 1.1.2's missed
+1 %). XRank under X3 reads Copy on everything nominated and on none of the distractors.
+
+**SI4 on synthetic art** (`sibench eval`): at θ = 1 it admits 23.1 % of the synthetic population
+with 96.7 % of copies, and the union with the keys reaches 100 % of 848 — out of distribution, as
+SI3 was (22.1 %). A host whose works look like the generators' output should keep SI2. (Wire 4
+moves which synthetic pairs comparator 42 certifies, 976 → 995 Copy pairs, so the synthetic eval
+split has 848 Copy queries where it had 832.)
+
+**What this does not establish** is what §9.7 says it does not, unchanged: one snapshot of 177
+works, synthetic transforms of real works, an in-sample funnel. SI4 is PROVISIONAL for the same
+reasons as SI3. Its signatures are of wire-4 sides: an index migrating from 1.1 re-hashes its
+works, then re-derives every signature under SI4 and swaps the postings (§7.4).
 ---
 
 ## 10. Verification
 
 ```bash
-cargo test --release --manifest-path rust/Cargo.toml   # 114 tests: 102 of 1.0.0, 7 of PAPH-SI, 4 of 1.1.1, 1 of 1.1.2
-bash rust/check.sh                                     # equivalence digest: 3,160 cases, byte-identical
-npm run test:si                                        # 1,421 checks: native = SIMD128 = baseline for signatures,
+cargo test --release --manifest-path rust/Cargo.toml   # 126 tests: 102 of 1.0.0, 7 of PAPH-SI, 4 of 1.1.1, 1 of 1.1.2, 12 of 1.2
+bash rust/check.sh                                     # both equivalence digests: wire 3 (3,160 cases), wire 4 (3,164)
+npm run test:si                                        # 1,422 checks: native = SIMD128 = baseline for signatures,
                                                        # keys, plans, scores and index answers; index =
                                                        # definition; SQL = index; through removals
-npm run bench:si -- --big                              # sibench eval --big: §3, §4, §9.1–§9.4 (-- --fit first: §5)
-npm run bench:chain                                    # rust/sibench.sh --chain: §9.7 (a chain snapshot, fetched on first use)
-rust/target/release/sibench route|lost [--x1]          # §3.3's G3 column and second partition, §11's synthetic counts
-rust/target/release/sibench chain                      # from rust/: §9.7's real pairs; route|doorprof --real and lost
+npm run bench:si -- --big                              # sibench eval --big, SI4 on wire 4 (§9.8's synthetic line)
+npm run bench:chain                                    # rust/sibench.sh --chain: §9.8 (a chain snapshot, fetched on first use)
+# from rust/: 1.1.1's tables — §3, §4, §5, §9.1–§9.4, §3.3, §11's synthetic counts — on the
+# synthetic corpus hashed in wire 3, under X2 and SI2 (--x1: X1 and SI1)
+target/release/sibench corpus --wire 3 --out corpus-w3.bin
+target/release/sibench eval|fit|route|lost --x2 --corpus corpus-w3.bin
+target/release/sibench chain                           # §9.8's real pairs; route|doorprof --real and lost
                                                        # with --corpus chain.bin, §11's real-work counts
 ```
 
@@ -946,30 +1060,35 @@ The PAPH-SI unit tests: the coarse cell is the exact median-bit parent of sixtee
 signatures round-trip; `isqrt128` is exact; Jacobi diagonalises; the index equals the scan slot for
 slot and score for score through adds, removals and compactions at five thresholds and budgets (an
 empty budget and no budget among them), and its entry accounting holds; SI1 round-trips, is bound
-to X1 and refuses tampering, and SI2 is SI1 bound to X2; SI3 is the shipped profile, round-trips,
-is bound to X2, keeps SI2's probes, feature derivation and budget, and has every codebook refitted
-but SIL's; on real wires, a signature from the wires alone equals the one from an X side, and
+to X1 and refuses tampering, and SI2 is SI1 bound to X2; SI3, 1.1.2's default, round-trips, is
+bound to X2, keeps SI2's probes, feature derivation and budget, and has every codebook refitted
+but SIL's; SI4 is the shipped profile, bound to X3, with SI3's probes, feature derivation and
+budget; on real wires, a signature from the wires alone equals the one from an X side, and
 mirrored, rotated and 2×-upscaled copies clear each profile's default threshold (30 of 30 under SI2
-and under SI3 on the logged run; the test requires 27). Unrelated works do not under SI2 (0 of 90;
-it allows 9); under SI3, whose codebooks were fitted on real works, 19 of these 90 pairs of
-synthetic works clear it, and the test does not bound that (§9.7). `npm run test:si` also checks
-that the shipped profile is SI3 byte for byte, that SI1 under X1 and SI2 under X2 sign every work
-of its corpus alike and that SI1 refuses a side prepared under X2. Separately, re-running the fits
-reproduces SI3 (`sibench chainfit --corpus chain.bin`, on the same snapshot), SI2 and, with `--x1`,
-SI1 byte for byte.
+and under SI4 on the logged run; the test requires 27). Unrelated works do not under SI2 (0 of 90;
+it allows 9); under SI4, whose codebooks were fitted on real works, 20 of these 90 pairs of
+synthetic works clear it (SI3: 19), and the test does not bound that (§9.7). `npm run test:si`
+also checks that the shipped profile is SI4 byte for byte, that SI2 and SI3 are bound to X2 (which
+loads with CAL-004), that SI1 under X1 and SI2 under X2 sign every work of its corpus alike, and
+that SI3 refuses a side prepared, and wires read, under X3. Separately, re-running the fits
+reproduces each artefact byte for byte (SI4-PROVISIONAL.log, runs 2 and 5–7): SI4 with `sibench
+chainfit` on the snapshot hashed in wire 4; SI3 with `chainfit --x2 --corpus chain-w3.bin`, SI2 with
+`fit --x2 --corpus corpus-w3.bin` and SI1 with `fit --x1 --corpus corpus-w3.bin`, on the wire-3
+hashes. A fit that does not reproduce a committed artefact is never written over it.
 
 ---
 
 ## 11. Known gaps and next steps
 
 * **A small real corpus.** 1.1.2 measured the index on Pixagram's own works for the first time
-  and replaced SI2 with SI3 (§9.7), but the corpus is small: 177 works by 30 authors at one
+  and replaced SI2 with SI3 (§9.7), and 1.2 refitted it on wire 4 as SI4 (§9.8), but the corpus
+  is small: 177 works by 30 authors at one
   snapshot of the chain, the twenty synthetic transforms applied to them rather than copies
   found in the wild (comparator 42 finds two pairs, each within one author's works), held-out
   folds of 86 and 88 works, and SIL's codebook still SI2's (17 works carry the family). 1.1.1
   called the synthetic spread of §4.3 a floor for real art; under SI2's codebooks the chain's
   works spread far less (3–16 effective cells, §9.7) — codebooks balanced on one population do
-  not spread another. SI3's codebooks and weights will move as the chain grows: fit a new
+  not spread another. SI4's codebooks and weights will move as the chain grows: fit a new
   profile on a new snapshot (`sibench chainfit --corpus chain.bin --name NAME`, written to
   `docs/calibration/NAME.psi`; a new id, and the stored signatures re-derived, §7.4).
 * **The XRoute class is a sketch, not a filter.** On this corpus X2's route bars — X1's, local 6 /
@@ -989,6 +1108,10 @@ SI1 byte for byte.
   corpus confirms the 1.1.1 decision: keep the bars, act on the class only behind the door. Route
   derivation 2 puts more of the real blurs and re-dithers in the class than derivation 1
   (resample90 25 against 16, up150 15 against 6, dither 51 against 20); no exit acts on that.
+  On wire 4 (1.2, X3: X2's bars) the class holds 255 of the 3,095 real copies and 46 of the 995
+  synthetic ones, the pair screen again rejects none, and the bars that keep every copy out
+  (local 2 / band 1 / global 154 on the chain) would leave 21.4 % of the unrelated real pairs in
+  the class instead of 93.6 %.
 * **XRank's gate lost three pairs under X1; X2 keeps them.** Shown the target alone, XRank under
   X1 (`gate: true`) did not read Copy on 6 of 1,952 comparator-42 Copy queries — three pairs,
   both arrival orders (`sibench lost --x1`): two channel-swapped pairs and one palette-shuffled
@@ -1008,7 +1131,11 @@ SI1 byte for byte.
   gate drops 822 of the 31,152 queries between distinct works of the chain (2.6 %), each after
   the door shut, and the door shuts on every unrelated pair of real bases (15,049: all pairs of
   distinct bases but the 2 comparator 42 calls Copy) at 66 µs a pair (`sibench doorprof --real`;
-  17.4 µs on the synthetic corpus's unrelated pairs).
+  17.4 µs on the synthetic corpus's unrelated pairs). On wire 4 under X3 XRank reads Copy on all
+  6,190 real-base queries and all 1,990 synthetic ones — after a fix: the first 1.2 run lost a
+  pasted synthetic copy (both orders) to a copy-scope stop taken after a saturated control, which
+  CAL-007's higher moderate bar made reachable; such a stop now defers to EXACT42 like any verdict
+  the control zeroed (docs/PAPH-X.md §4).
 * **Comparator 42's own gated rank drops copies of works with few keypoints, and is
   unchanged.** `rank` with `gate: true` (`paph_rank42`, flags bit 0) — the verifier of
   docs/SEARCH.md §4 and of the pixagram-search integration — screens out every pair whose
@@ -1020,40 +1147,48 @@ SI1 byte for byte.
   4 of them for keypoints (`sibench lost --corpus chain.bin`). Works with so few keypoints,
   common among the synthetic corpus's copy pairs, are rare on the chain. XRank does not gate a
   candidate its route reads as Fast (172 of the 178; all 8 of the real ones), and under X2 reads
-  Copy on all of them. Verify with XRank, or with `rank` and `gate: false`.
-* **Comparator 42's Suspected on real works.** Between distinct works of the chain comparator 42
-  reads Suspected ("partial agreement") on 225 of 15,576 pairs, 191 of them between two authors —
-  1.3 % of cross-author pairs, where it reads Copy on none. A host that queues Suspected for
-  review would queue about one cross-author pair in seventy-five (the pixagram-search
-  integration stores verdicts from Suspected up by default). The threshold is
-  CAL-004's, which no 1.1.x release moves; XRank reports the same Suspected (copy scope), and its
-  gate drops 8 of the 450 queries on those pairs where comparator 42's own drops 30 of the 225
-  pairs.
+  Copy on all of them. Verify with XRank, or with `rank` and `gate: false`. On wire 4 the gate
+  screens out 194 of the synthetic corpus's 995 copies (177 for keypoints) and 9 of the chain's
+  3,095 (5 for keypoints); XRank's route reads 188 and all 9 of them as Fast, and XRank under X3
+  reads Copy on every one.
+* **Comparator 42's Suspected on real works — moved in 1.2.** Between distinct works of the
+  chain comparator 42 read Suspected ("partial agreement") on 225 of 15,576 pairs under CAL-004,
+  191 of them between two authors (1.3 % of cross-author pairs; on wire 4: 259, 222 of them),
+  where it reads Copy on none: a host queueing Suspected for review would have queued about one
+  cross-author pair in seventy-five. CAL-007-PROVISIONAL (SPEC-004.2 §19) raises the moderate
+  structural bar to 3300, just above the highest certifiable cross-author structure on the chain
+  (3232): Suspected falls to 0 there, no Copy moves anywhere, and on transformed copies only the
+  weakest move, Suspected → Related (88 of 3,480 real, 175 of 2,400 synthetic). One snapshot fitted it; a
+  larger chain will show where cross-author structure really ends.
 * **Blur-like transforms.** Box-filter resamples and non-integer rescales move every wire section
   the families read (the front end quantises to a palette and downsamples by majority, which
   blending defeats). On the synthetic corpus comparator 42 rarely certifies them either: of 120
   pairs each, it reads Copy on 0 down70, 15 resample90 and 6 up150 pairs. On the chain's works it
   certifies nearly all of them (166, 171 and 173 of 174), so there they are copies the index
-  must find: SI3 nominates 38 % of the down70 queries in the funnel, and the exact keys 90 %
-  (§9.7); the union holds 93 %.
-* **Unexplained shortfalls.** SHAPE, SIL and KPGEO under mirror, rot90 and rot180, and LOCAL and
-  BAND under the complement, fall short of their design (§3.2) for reasons not established here.
-  For the first three, §3.3 rules out the thumbnail's and the shapes section's grids, and their
-  holding under transpose points at rounding anchored to the top-left corner; §3.2 names the
-  candidates read from the code. Fixing any of them changes the cells, so it is a new SI profile
-  and a re-index, not a patch.
+  must find: SI3 nominated 38 % of the down70 queries in the funnel and SI4 nominates 32 %, the
+  exact keys 90 % (§9.7, §9.8); the union holds 93 %.
+* **Shortfalls, explained and not.** SHAPE and SIL under mirror, rot90 and rot180 fell short of
+  their design (§3.2) because of the hasher's sampling — region order by position, rays from a
+  rounded centroid, a silhouette whose transitions counted one margin — which wire 4 removed:
+  both hold on every D4 copy of both corpora (§9.8). KPGEO under those symmetries, and LOCAL and
+  BAND under the complement, still fall short, for reasons not established here; KPGEO reads the
+  keypoints, which wire 4 does not touch. Fixing them changes the cells (and for KPGEO the
+  keypoint pipeline), so it is a new SI profile and a re-index, not a patch.
 * **Continuous re-ranking.** Storing each family's four projections (24 bytes) and re-ranking the
   admitted pool by noise-scaled distance measured +2.3–2.4 points at 0.5–1 % pools and +0.7 at
   0.1 % in the prototype (§9.6), on synthetic art. Not measured on the chain's works; not worth a
   signature change before it is.
 * **The verifier's cost on nominated candidates** (§9.5) is now the binding constraint at
-  millions of works. Over the chain's pairs XRank costs 0.79 ms a query, one candidate per call,
-  against 1.22 ms for comparator 42's gated rank — 1.6 times faster, where the synthetic
-  reference workload (a different measurement: one query against 100 candidates in one call)
-  gives 3.2 times. On the real pairs its sparse scan reads every row of the smaller side on all
-  but 4 of the 30,330 queries that reach the cascade: the anchor tiers expand until a
-  certificate holds (docs/PAPH-X.md §4, §6). A cheaper first stage for nominated candidates is
-  the next lever, and belongs to PAPH-X, not to the index.
+  millions of works. Over the chain's pairs XRank under X3 costs 0.65 ms a query, one candidate
+  per call, against 1.10 ms for comparator 42's gated rank — 1.7 times faster (X2 on the same
+  wire-4 pairs: 0.72 ms; 1.1.2, X2 on wire 3: 0.79 against 1.22 ms), where the synthetic
+  reference workload (a different measurement: one query against 100 candidates in one call) gives
+  3.2 times natively and 3.3 in WebAssembly. On the real pairs its sparse scan still reads every
+  row of the smaller side on all but 4 of the 30,330 queries that reach the cascade. 1.2 measured the
+  exit 1.1.2 proposed for that and did not take it: no tier ever finds a model on an unrelated real
+  pair, but copies whose model appears only after the anchor tier exist on both corpora, and every
+  exit rule measured puts some of them at risk (docs/PAPH-X.md §6). A cheaper first stage for
+  nominated candidates is still the next lever, and belongs to PAPH-X, not to the index.
 * **The pixagram-search integration** (`integrations/pixagram-search`, a patch on that
   repository: the `PaphIndex` Durable Object, D1 verdicts) does not carry PAPH-SI yet. The
   schema, the statement and the glue are here; adding `si_works` / `si_postings` beside its

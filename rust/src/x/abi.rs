@@ -5,10 +5,11 @@
 //!   paph_xabi() -> 1
 //!   paph_xprofile(prof, pxcl, n) -> handle | 0
 //!       `prof`: a comparator-42 profile handle (0 = the shipped
-//!       CAL-004-PROPOSED); `pxcl`: an X profile artefact (version 1, X1,
-//!       or version 2, X2 onwards), or null for the shipped X2-PROVISIONAL
-//!       bound to that profile.  0 when the artefact does not decode.
-//!       Check it.
+//!       CAL-007-PROVISIONAL); `pxcl`: an X profile artefact (version 1, X1,
+//!       or version 2, X2 onwards), or null for the shipped X3-PROVISIONAL's
+//!       schedule bound to that profile.  0 when the artefact does not
+//!       decode; an artefact bound to another base decodes, and its status
+//!       says so (2).  Check both.
 //!   paph_xprofile_free(h)
 //!   paph_xprofile_bytes(h) -> block          the X artefact's bytes
 //!   paph_xprofile_id(h, out_32)              SHA-256 identity

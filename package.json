@@ -1,6 +1,6 @@
 {
   "name": "@pixagram/paph-x",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "PAPH-X — PAPH 4.2's integer-only perceptual hash and calibrated comparator for pixel-art copy detection, with the retrieval-native cascade that reaches the same verdicts through a cheaper path, and PAPH-SI, the screening index that finds the few stored works worth comparing. Optimized Rust reference compiled to WebAssembly (SIMD128), a JavaScript engine that agrees byte for byte, index keys for search engines, and the evidence bench.",
   "license": "MIT",
   "type": "module",
@@ -51,12 +51,13 @@
     "test/*.mjs",
     "test/*.cjs",
     "test/equiv-digest.txt",
+    "test/equiv-digest-4.txt",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
-    "test": "node test/wire.cjs && node test/comparator.cjs",
+    "test": "node test/wire.cjs && node test/comparator.cjs && node test/wire4-golden.cjs",
     "test:wasm": "node test/wasm-parity.mjs",
     "test:wasm:quick": "node test/wasm-parity.mjs --quick",
     "test:equiv": "node test/wasm-equiv.mjs",
@@ -69,6 +70,8 @@
     "bench:chain": "bash rust/sibench.sh --chain",
     "test:bench": "node test/bench.mjs",
     "test:native": "cargo build --release --manifest-path rust/Cargo.toml && node test/parity-native.mjs",
+    "test:wire4": "cargo build --release --manifest-path rust/Cargo.toml && node test/wire4-parity.mjs",
+    "test:golden4": "node test/wire4-golden.cjs",
     "test:rust": "bash rust/check.sh",
     "verify": "npm test && npm run test:wasm && npm run test:bench",
     "bench": "node test/bench-engines.mjs",

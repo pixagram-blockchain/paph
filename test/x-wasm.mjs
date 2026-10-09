@@ -14,11 +14,13 @@
  *              verdict; gated-out candidates are never comparator-42 copies
  *   sidecar    a side prepared through its sidecar reports identically
  *   builds     SIMD128 and baseline produce the same text
- *   profiles   the shipped X profile is X2 (docs/calibration/X2-PROVISIONAL.pxcl);
- *              1.0.0's X1 loads from its artefact with its identity
+ *   profiles   the shipped X profile is X3 (docs/calibration/X3-PROVISIONAL.pxcl);
+ *              1.0.0's X1 and 1.1's X2 load from their artefacts with
+ *              CAL-004, their identities unchanged, and are refused
+ *              against the shipped CAL-007
  *   door       two copies comparator 42 certifies on structure alone, with
  *              empty anchor pools: X1's gate drops them (the first also its
- *              pair screen and fast policy), X2 keeps them — the first
+ *              pair screen and fast policy), X3 keeps them — the first
  *              through the structural door, the second through route
  *              derivation 2 — and the rank records are equal natively and in
  *              both WebAssembly builds
@@ -77,11 +79,16 @@ const xp = simd.xprofile();
 ok(xp.status() === 'ok', 'shipped X profile binds to the shipped base', xp.id().slice(0, 16));
 ok(xp.bytes().length > 200, 'X artefact bytes', xp.bytes().length + ' B');
 const calib = join(root, 'docs', 'calibration');
-const x2file = readFileSync(join(calib, 'X2-PROVISIONAL.pxcl'));
-ok(Buffer.from(xp.bytes()).equals(x2file), 'the shipped X profile is X2-PROVISIONAL, byte for byte', xp.id().slice(0, 16));
-const x1 = simd.xprofile({ x: readFileSync(join(calib, 'X1-PROVISIONAL.pxcl')) });
-const x1b = base.xprofile({ x: readFileSync(join(calib, 'X1-PROVISIONAL.pxcl')) });
-ok(x1.status() === 'ok' && x1.id().startsWith('b96040d888b21e28'), "1.0.0's X1-PROVISIONAL loads from its artefact, identity unchanged", x1.id().slice(0, 16));
+const x3file = readFileSync(join(calib, 'X3-PROVISIONAL.pxcl'));
+ok(Buffer.from(xp.bytes()).equals(x3file), 'the shipped X profile is X3-PROVISIONAL, byte for byte', xp.id().slice(0, 16));
+/* 1.0.0's X1 and 1.1's X2 are bound to CAL-004: they load with it */
+const cal004 = readFileSync(join(calib, 'CAL-004-PROPOSED.pcal'));
+const x1 = simd.xprofile({ base: cal004, x: readFileSync(join(calib, 'X1-PROVISIONAL.pxcl')) });
+const x1b = base.xprofile({ base: cal004, x: readFileSync(join(calib, 'X1-PROVISIONAL.pxcl')) });
+ok(x1.status() === 'ok' && x1.id().startsWith('b96040d888b21e28'), "1.0.0's X1-PROVISIONAL loads from its artefact with CAL-004, identity unchanged", x1.id().slice(0, 16));
+const x2 = simd.xprofile({ base: cal004, x: readFileSync(join(calib, 'X2-PROVISIONAL.pxcl')) });
+ok(x2.status() === 'ok' && x2.id().startsWith('27993afaaca76d11'), "1.1's X2-PROVISIONAL loads from its artefact with CAL-004, identity unchanged", x2.id().slice(0, 16));
+ok(simd.xprofile({ x: readFileSync(join(calib, 'X2-PROVISIONAL.pxcl')) }).status() !== 'ok', 'X2 against the shipped CAL-007 is refused (its base identity is CAL-004\'s)');
 
 /* ---- the structural door ---- */
 {
@@ -94,18 +101,18 @@ ok(x1.status() === 'ok' && x1.id().startsWith('b96040d888b21e28'), "1.0.0's X1-P
     const r1 = simd.xrank(a, [b], { profile: x1 })[0];
     const r2 = simd.xrank(a, [b])[0];
     ok(r1.state === -1, `door case ${k}: X1's gate drops it`, `${r1.screen}, route ${r1.route.class}, pools ${r1.poolDirect}/${r1.poolMirror}`);
-    // what keeps it under X2: the door for the first (its route still reads
+    // what keeps it under X3 (X2's schedule): the door for the first (its route still reads
     // REJECT), route derivation 2 for the second (its route reads FAST)
-    ok(r2.verdict === 'Copy' && r2.route.class === (k === 0 ? 'REJECT' : 'FAST'), `door case ${k}: X2 keeps it and reads Copy — ${k === 0 ? 'through the structural door' : 'its route reads FAST under route derivation 2'}`, `${r2.verdict} ${r2.execution}, route ${r2.route.class}`);
+    ok(r2.verdict === 'Copy' && r2.route.class === (k === 0 ? 'REJECT' : 'FAST'), `door case ${k}: X3 keeps it and reads Copy — ${k === 0 ? 'through the structural door' : 'its route reads FAST under route derivation 2'}`, `${r2.verdict} ${r2.execution}, route ${r2.route.class}`);
     const s1 = simd.xscreen(a, b, { profile: x1 }), s2 = simd.xscreen(a, b);
     const f1 = simd.xcompare(a, b, { profile: x1, policy: 'fast' }), f2 = simd.xcompare(a, b, { policy: 'fast' });
     if (k === 0) ok(s1.state === 'Reject' && f1.verdict === 'Unrelated', 'door case 0: under X1 the pair screen rejects it and the fast policy reads Unrelated', `${s1.state}, ${f1.verdict}`);
-    ok(s2.state === (k === 0 ? 'Defer' : 'Pass') && f2.verdict !== 'Unrelated', `door case ${k}: under X2 the pair screen ${k === 0 ? 'defers it (the door is open)' : 'passes it on the route'} and the fast policy does not read Unrelated`, `${s2.state}, ${f2.verdict} ${f2.execution}`);
+    ok(s2.state === (k === 0 ? 'Defer' : 'Pass') && f2.verdict !== 'Unrelated', `door case ${k}: under X3 the pair screen ${k === 0 ? 'defers it (the door is open)' : 'passes it on the route'} and the fast policy does not read Unrelated`, `${s2.state}, ${f2.verdict} ${f2.execution}`);
     for (const [prof, profb, extra] of [[x1, x1b, ['--x1']], [undefined, undefined, []]]) {
       const raw = Array.from(simd.xrank(a, [b], { profile: prof, raw: true }).records).join(',');
       const rawb = Array.from(base.xrank(a, [b], { profile: profb, raw: true }).records).join(',');
       const nat = native('rank', join(dir, `door${k}a.t1`), join(dir, `door${k}a.t2`), join(dir, `door${k}b.t1`), join(dir, `door${k}b.t2`), ...extra);
-      ok(raw === nat && rawb === raw, `door case ${k}: rank record native = SIMD128 = baseline (${extra.length ? 'X1' : 'X2'})`);
+      ok(raw === nat && rawb === raw, `door case ${k}: rank record native = SIMD128 = baseline (${extra.length ? 'X1' : 'X3'})`);
     }
   }
 }

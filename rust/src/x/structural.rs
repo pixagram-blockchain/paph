@@ -169,7 +169,7 @@ fn read_shapes_x(t: &Tier1, out: &mut [ShapeX; 8]) -> usize {
         let r = &mut out[i];
         r.area = u32::from_le_bytes([s[o], s[o + 1], s[o + 2], s[o + 3]]);
         r.per = u16::from_le_bytes([s[o + 4], s[o + 5]]) as i64;
-        r.aspect = u16::from_le_bytes([s[o + 6], s[o + 7]]) as i64;
+        r.aspect = t.shape_aspect(&s[o..o + 41]);
         r.holes = s[o + 8] as i64;
         for k in 0..32 {
             r.radial[k] = s[o + 9 + k] as i64;

@@ -1,6 +1,7 @@
 //! Timing harness: prof <mode> <iters> <a.rgba> [b.rgba]
-//!   mode h  — hash a
-//!   mode c  — compare_v42(a, b)
+//!   mode h  — hash a (wire 4, the default)
+//!   mode h3 — hash a in wire 3 (1.0–1.1's sampling)
+//!   mode c  — compare_v42(a, b), under the shipped calibration
 //!   mode s  — screen_v42(a, b)
 //!   mode 3  — the v3 comparator(a, b)
 //! Images are raw dumps: [u32 w][u32 h][RGBA].  Prints the best and the median
@@ -24,8 +25,9 @@ fn main() {
     let (pa, wa, ha) = load(&a[3]);
     let cfg = Config::default();
     let rot = RotCache::new(&pattern());
-    let prof = paph::calibration::Profile::cal004();
-    let (fa, fb) = if mode != "h" {
+    let cfg3 = Config { wire: paph::config::WIRE_3, ..Config::default() };
+    let prof = paph::calibration::Profile::shipped();
+    let (fa, fb) = if mode != "h" && mode != "h3" {
         let (pb, wb, hb) = load(&a[4]);
         (Some(hash(&pa, wa, ha, &cfg, &rot)), Some(hash(&pb, wb, hb, &cfg, &rot)))
     } else {
@@ -36,8 +38,8 @@ fn main() {
         let t = Instant::now();
         for _ in 0..n {
             match mode.as_str() {
-                "h" => {
-                    let f = hash(&pa, wa, ha, &cfg, &rot);
+                "h" | "h3" => {
+                    let f = hash(&pa, wa, ha, if mode == "h3" { &cfg3 } else { &cfg }, &rot);
                     acc += f.kp_count as i64 + f.t1[100] as i64;
                 }
                 "c" => {

@@ -407,8 +407,8 @@ mod tests {
     /// the one derived from the wires alone, and copies under the square's
     /// symmetries and an integer upscale clear the default threshold against
     /// their original — under SI2, fitted on this generator's kind of art,
-    /// and the shipped SI3, fitted on the chain's.  Unrelated works of this
-    /// generator mostly stay below SI2's threshold; SI3's population is real
+    /// and the shipped SI4, fitted on the chain's.  Unrelated works of this
+    /// generator mostly stay below SI2's threshold; SI4's population is real
     /// art, on which it is measured instead (`sibench chainfit`).
     #[test]
     fn copies_score_and_unrelated_works_do_not() {

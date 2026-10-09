@@ -1,4 +1,4 @@
-//! Calibration profiles X1 and X2 (PAPH-X specification §20, §43).
+//! Calibration profiles X1, X2 and X3 (PAPH-X specification §20, §43).
 //!
 //! Everything that can change an XRoute, an XMatch or an XRank result lives
 //! here, as one immutable byte artefact with a SHA-256 identity — the same
@@ -12,6 +12,13 @@
 //! The numerical values shipped here are IMPLEMENTATION DEFAULTS for
 //! calibration (§43), not calibrated decision constants.  The artefact says
 //! PROVISIONAL and the benchmark harness (`xbench`) measures what they do.
+//!
+//! The identity covers the data, not the code that reads it: a fix to the
+//! engine can move results under every profile at once, each identity
+//! unchanged.  1.2's copy-scope fix (`compare.rs`: a control that saturates
+//! under copy scope defers instead of reading NotCopy) applies under X1 and
+//! X2 as it does under X3; the release notes name such changes, and a store
+//! that keeps results beside a profile id keeps the engine's version too.
 
 use crate::calibration::{Profile, COMPARATOR_V42};
 use crate::config::Config;
@@ -225,15 +232,37 @@ impl XProfile {
         Self::x1_for(&Profile::cal004())
     }
 
-    /// X2-PROVISIONAL bound to CAL-004-PROPOSED — the shipped default from
-    /// 1.1.1.
+    /// X2-PROVISIONAL bound to CAL-004-PROPOSED — the shipped default of
+    /// 1.1.1–1.1.2.
     pub fn x2() -> XProfile {
         Self::x2_for(&Profile::cal004())
     }
 
-    /// The shipped default bound to `base`.
+    /// X3-PROVISIONAL bound to CAL-007-PROVISIONAL — the shipped default
+    /// from 1.2.
+    pub fn x3() -> XProfile {
+        Self::x3_for(&Profile::cal007())
+    }
+
+    /// The shipped default's schedule bound to `base`.
     pub fn shipped_for(base: &Profile) -> XProfile {
-        Self::x2_for(base)
+        Self::x3_for(base)
+    }
+
+    /// X3-PROVISIONAL bound to `base`: X2's route, screen, scan, anchor
+    /// schedule and certificate, bound to 1.2's comparator calibration
+    /// (CAL-007, whose higher moderate bar lets copy scope stop sooner on
+    /// pairs of busy unrelated works).  An exit from the anchor expansion
+    /// was measured and rejected: on the chain's real-base corpus, copies
+    /// whose geometric evidence appears only after the anchor tiers (pastes,
+    /// crops; some only on the last tier) are found by no evidence the
+    /// earlier tiers show, so any exit loses some (docs/PAPH-X.md §6).
+    pub fn x3_for(base: &Profile) -> XProfile {
+        let mut p = Self::x2_for(base);
+        let mut name = [0u8; 16];
+        name[..14].copy_from_slice(b"X3-PROVISIONAL");
+        p.name = name;
+        p
     }
 
     /// X2-PROVISIONAL bound to `base`: X1 with route derivation 2 and the
@@ -554,6 +583,18 @@ mod tests {
         assert_ne!(x2.id(), x1.id());
         assert_eq!((x2.route_derivation, x2.gate_door), (ROUTE_DERIVATION_2, 1));
         println!("X2-PROVISIONAL id {} ({} bytes)", hex(&x2.id()), b.len());
+        // X2's artefact is 1.1's, byte for byte, and X3 is its schedule bound
+        // to CAL-007: the name and the base identity are all that differ
+        assert_eq!(x2.encode(), include_bytes!("../../../docs/calibration/X2-PROVISIONAL.pxcl").to_vec(), "X2-PROVISIONAL moved");
+        let x3 = XProfile::x3();
+        x3.validate().unwrap();
+        let mut y = x3.clone();
+        y.name = x2.name;
+        y.base_id = x2.base_id;
+        assert_eq!(y, x2, "X3 is X2's schedule");
+        assert_eq!(x3.base_id, Profile::cal007().id());
+        assert_eq!(x3.encode(), include_bytes!("../../../docs/calibration/X3-PROVISIONAL.pxcl").to_vec(), "the committed X3 artefact is stale");
+        println!("X3-PROVISIONAL id {} ({} bytes)", hex(&x3.id()), x3.encode().len());
         // a version-1 artefact cannot claim version-2 behaviour
         let mut bad = x1.clone();
         bad.gate_door = 1;
@@ -636,8 +677,13 @@ impl XBound {
         XBound { base, xp, base_id, xid, salts, projections, refused }
     }
 
-    /// The shipped pair: CAL-004-PROPOSED and X2-PROVISIONAL.
+    /// The shipped pair: CAL-007-PROVISIONAL and X3-PROVISIONAL (from 1.2).
     pub fn shipped() -> XBound {
+        XBound::new(Profile::cal007(), XProfile::x3())
+    }
+
+    /// 1.1's pair: CAL-004-PROPOSED and X2-PROVISIONAL.
+    pub fn x2() -> XBound {
         XBound::new(Profile::cal004(), XProfile::x2())
     }
 

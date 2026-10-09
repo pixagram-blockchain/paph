@@ -2,7 +2,10 @@
 //! the vectors and the code that must satisfy them cannot drift apart.  The
 //! checked-in file `docs/golden/GOLDEN-004.json` is byte-for-byte this
 //! module's output (a test asserts it), and the M4 JavaScript port consumes it
-//! before porting begins — vectors first, port second.
+//! before porting begins — vectors first, port second.  Wire 4's sampling
+//! (docs/SPEC-W4-paph-wire4.md) has its own file, `docs/golden/GOLDEN-W4.json`
+//! (`golden_w4_json`), which test/wire4-golden.cjs checks every engine
+//! against without a native binary.
 //!
 //! Everything here is integers and fixed-order strings: the JSON is built by
 //! hand (zero dependencies, like everything else consensus-visible) with one
@@ -126,9 +129,11 @@ pub fn golden_json() -> String {
     o.push_str("],\n");
 
     // ---- hash-profile identity (§7) over the shipping defaults ----
+    // (of format 3, the format this file is for: 1.2's wire-4 identity is
+    // docs/golden/GOLDEN-W4.json's)
     o.push_str(&format!(
         "\"hash_profile_id_default\":\"{}\",\n",
-        hex(&hash_profile_id(&Config::default()))
+        hex(&hash_profile_id(&Config { wire: crate::config::WIRE_3, ..Config::default() }))
     ));
 
     // ---- CAL-001-PROVISIONAL (§8, App B/C): the artefact IS the profile ----
@@ -646,6 +651,353 @@ pub fn golden_json() -> String {
     o
 }
 
+// ====================================================================
+// Wire 4 (docs/SPEC-W4-paph-wire4.md): docs/golden/GOLDEN-W4.json
+// ====================================================================
+
+/// The golden images of wire 4: `synth::pixel_art` (name, w, h, seed, ncol,
+/// bg).  Its stream is integer-only, so any port draws the same pixels —
+/// test/wire4-golden.cjs carries a JavaScript copy and checks it against
+/// `pixels_sha256` before it hashes anything.  The sizes are chosen to cut:
+/// one that 16 divides (wire 3's and wire 4's cells coincide), odd widths
+/// and heights, shape grids of one and two pixels a cell, a tall canvas,
+/// transparency (the silhouette) and a matte.
+const W4_IMAGES: [(&str, usize, usize, u64, usize, u8); 6] = [
+    ("art-16x16", 16, 16, 5, 6, 2),
+    ("art-37x29-alpha", 37, 29, 2, 5, 0),
+    ("art-40x33-matte", 40, 33, 1, 6, 1),
+    ("art-130x77-alpha", 130, 77, 3, 6, 0),
+    ("art-61x200", 61, 200, 4, 8, 2),
+    ("art-203x151-alpha", 203, 151, 6, 7, 0),
+];
+
+/// The images whose seven other D4 images are recorded too, and the one
+/// whose Tier 1 is written out in full.
+const W4_D4: [&str; 3] = ["art-37x29-alpha", "art-130x77-alpha", "art-203x151-alpha"];
+const W4_FULL: &str = "art-37x29-alpha";
+
+/// The square's symmetries as a port draws them, from the two operations
+/// every harness has (`synth::mirror`, `synth::rot90`, a quarter turn
+/// clockwise): "mirror.rotK" is mirror(rotK(image)).
+const W4_D4_NAMES: [&str; 7] = ["mirror", "rot90", "rot180", "rot270", "mirror.rot90", "mirror.rot180", "mirror.rot270"];
+
+fn d4_named(a: &crate::synth::Img, name: &str) -> crate::synth::Img {
+    use crate::synth::{mirror, rot90};
+    let turns = match name.trim_start_matches("mirror").trim_start_matches('.') {
+        "rot90" => 1,
+        "rot180" => 2,
+        "rot270" => 3,
+        _ => 0,
+    };
+    let mut b = a.clone();
+    for _ in 0..turns {
+        b = rot90(&b);
+    }
+    if name.starts_with("mirror") {
+        b = mirror(&b);
+    }
+    b
+}
+
+/// The masks the radial-profile vectors are cast on: an L, a ring (its
+/// centroid falls in the hole), a U (between the arms) and a staircase
+/// (every step lands on edges and corners).
+const W4_MASKS: [(&str, &[&str]); 4] = [
+    ("L", &["#.....", "#.....", "#.....", "#.....", "######"]),
+    ("ring", &[".#####.", "##...##", "#.....#", "#.....#", "#.....#", "##...##", ".#####."]),
+    ("U", &["#...#", "#...#", "#...#", "#...#", "#####"]),
+    ("stair", &["#.....", "##....", ".##...", "..##..", "...##.", "....##"]),
+];
+
+/// A canvas of cells stamped in one colour on transparency.
+pub(crate) struct TieCanvas {
+    pub name: &'static str,
+    pub w: usize,
+    pub h: usize,
+    /// (where the shape's box starts, its cells relative to that corner)
+    pub stamps: [((usize, usize), &'static [[usize; 2]]); 2],
+}
+
+pub(crate) const TIE_RGBA: [u8; 4] = [200, 40, 40, 255];
+
+/// The silhouette's ties (SPEC-W4 §4): the four pairs of ten-cell shapes
+/// (free polyominoes) tied on the area, the perimeter, the box and the
+/// canonical profile, which the moments settle; the one pair of thirteen
+/// cells or fewer tied on the moments too, which the occupancy settles; and
+/// twins — an F and the same F turned — which only the scan order can.
+/// rust/src/wire4.rs (`silhouette_ties`) checks every one under the seven
+/// other symmetries; test/wire4-golden.cjs and test/wire4-parity.mjs hash
+/// them in every engine.
+pub(crate) const W4_TIES: [TieCanvas; 6] = [
+    TieCanvas {
+        name: "pair-0",
+        w: 20,
+        h: 16,
+        stamps: [
+            ((1, 1), &[[0, 0], [3, 0], [0, 1], [2, 1], [3, 1], [0, 2], [1, 2], [2, 2], [3, 2], [0, 3]]),
+            ((15, 11), &[[0, 0], [1, 0], [2, 0], [3, 0], [0, 1], [0, 2], [1, 2], [1, 3], [2, 3], [3, 3]]),
+        ],
+    },
+    TieCanvas {
+        name: "pair-1",
+        w: 20,
+        h: 16,
+        stamps: [
+            ((1, 1), &[[3, 0], [1, 1], [2, 1], [3, 1], [4, 1], [1, 2], [2, 2], [4, 2], [0, 3], [1, 3]]),
+            ((14, 11), &[[2, 0], [3, 0], [1, 1], [2, 1], [3, 1], [4, 1], [1, 2], [4, 2], [0, 3], [1, 3]]),
+        ],
+    },
+    TieCanvas {
+        name: "pair-2",
+        w: 20,
+        h: 16,
+        stamps: [
+            ((1, 1), &[[1, 0], [2, 0], [3, 0], [4, 0], [1, 1], [2, 1], [0, 2], [1, 2], [2, 2], [0, 3]]),
+            ((14, 11), &[[1, 0], [2, 0], [3, 0], [4, 0], [0, 1], [1, 1], [0, 2], [1, 2], [2, 2], [0, 3]]),
+        ],
+    },
+    TieCanvas {
+        name: "pair-3",
+        w: 20,
+        h: 16,
+        stamps: [
+            ((1, 1), &[[1, 0], [2, 0], [0, 1], [1, 1], [2, 1], [3, 1], [0, 2], [0, 3], [0, 4], [1, 4]]),
+            ((14, 11), &[[1, 0], [2, 0], [3, 0], [4, 0], [0, 1], [1, 1], [4, 1], [0, 2], [0, 3], [1, 3]]),
+        ],
+    },
+    TieCanvas {
+        name: "pair-4",
+        w: 20,
+        h: 16,
+        stamps: [
+            ((1, 1), &[[1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0], [1, 1], [2, 1], [6, 1], [1, 2], [6, 2], [0, 3], [1, 3]]),
+            ((12, 11), &[[0, 0], [1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [0, 1], [2, 1], [5, 1], [0, 2], [5, 2], [5, 3], [6, 3]]),
+        ],
+    },
+    TieCanvas {
+        name: "twins",
+        w: 24,
+        h: 20,
+        stamps: [
+            ((2, 2), &[[2, 0], [3, 0], [4, 0], [5, 0], [2, 1], [3, 1], [4, 1], [5, 1], [0, 2], [1, 2], [2, 2], [3, 2], [0, 3], [1, 3], [2, 3], [3, 3], [2, 4], [3, 4], [2, 5], [3, 5]]),
+            ((16, 12), &[[0, 0], [1, 0], [2, 0], [3, 0], [0, 1], [1, 1], [2, 1], [3, 1], [2, 2], [3, 2], [4, 2], [5, 2], [2, 3], [3, 3], [4, 3], [5, 3], [2, 4], [3, 4], [2, 5], [3, 5]]),
+        ],
+    },
+];
+
+pub(crate) fn tie_canvas(t: &TieCanvas) -> crate::synth::Img {
+    let mut im = crate::synth::Img::new(t.w, t.h);
+    for &((ox, oy), cells) in t.stamps.iter() {
+        for c in cells {
+            im.set((ox + c[0]) as i64, (oy + c[1]) as i64, TIE_RGBA);
+        }
+    }
+    im
+}
+
+fn hex16(b: &[u8]) -> String {
+    hex(&sha256(b))[..16].to_string()
+}
+
+fn arr_u8(v: &[u8]) -> String {
+    let s: Vec<String> = v.iter().map(|x| x.to_string()).collect();
+    format!("[{}]", s.join(","))
+}
+
+pub fn golden_w4_json() -> String {
+    use crate::config::{WIRE_3, WIRE_4};
+    use crate::sections::{canonical_profile, cell_span, dct2, dct2_exact, profile_bytes, ray_d4, rays_exact};
+    use crate::synth::{pixel_art, Rng};
+    use crate::wire::{hash, section_offset, SECTIONS};
+
+    let mut o = String::with_capacity(64 * 1024);
+    o.push_str("{\n\"spec\":\"PAPH-SPEC-W4\",\"format\":4,\"images_from\":\"rust/src/synth.rs pixel_art\",\n");
+
+    // ---- the hash-profile identity of the defaults, in each format ----
+    o.push_str(&format!(
+        "\"hash_profile_id\":{{\"wire3\":\"{}\",\"wire4\":\"{}\"}},\n",
+        hex(&hash_profile_id(&Config { wire: WIRE_3, ..Config::default() })),
+        hex(&hash_profile_id(&Config { wire: WIRE_4, ..Config::default() }))
+    ));
+
+    // ---- §2 closed cells: cell i of n across w pixels, [x0, x1) ----
+    o.push_str("\"cell_span\":[");
+    for (i, &(w, n)) in [(16usize, 16usize), (37, 16), (29, 16), (200, 16), (7, 4), (5, 8), (130, 65)].iter().enumerate() {
+        if i > 0 {
+            o.push(',');
+        }
+        let closed: Vec<(usize, usize)> = (0..n).map(|c| cell_span(c, w, n, true)).collect();
+        let open: Vec<(usize, usize)> = (0..n).map(|c| cell_span(c, w, n, false)).collect();
+        o.push_str(&format!("{{\"w\":{},\"n\":{},\"closed\":{},\"open\":{}}}", w, n, pairs(&closed), pairs(&open)));
+    }
+    o.push_str("],\n");
+
+    // ---- §3 the DCT rounded once (wire 4) beside the two passes (wire 3) ----
+    o.push_str("\"dct\":[");
+    for (i, &n) in [4usize, 8, 16].iter().enumerate() {
+        if i > 0 {
+            o.push(',');
+        }
+        let mut r = Rng(0x5eed_0000 + n as u64);
+        let src: Vec<i32> = (0..n * n).map(|_| r.below(256) as i32).collect();
+        o.push_str(&format!(
+            "{{\"n\":{},\"src\":{},\"exact\":{},\"wire3\":{}}}",
+            n,
+            arr_i32(&src),
+            arr_i32(&dct2_exact(&src, n)),
+            arr_i32(&dct2(&src, n))
+        ));
+    }
+    o.push_str("],\n");
+
+    // ---- §5 ray k after symmetry e (bit 2 swap the axes, bit 0 flip x, bit 1 flip y) ----
+    o.push_str("\"ray_d4\":[");
+    for e in 0..8 {
+        if e > 0 {
+            o.push(',');
+        }
+        let row: Vec<usize> = (0..32).map(|k| ray_d4(k, e)).collect();
+        o.push_str(&arr_usize(&row));
+    }
+    o.push_str("],\n");
+
+    // ---- §5 radial extents from the exact centroid ----
+    o.push_str("\"rays\":[");
+    for (i, (name, rows)) in W4_MASKS.iter().enumerate() {
+        if i > 0 {
+            o.push(',');
+        }
+        let (w, h) = (rows[0].len(), rows.len());
+        let id: Vec<i32> = rows.iter().flat_map(|r| r.bytes().map(|c| if c == b'#' { 0 } else { -1 })).collect();
+        let (mut area, mut sx, mut sy) = (0i64, 0i64, 0i64);
+        let (mut minx, mut maxx, mut miny, mut maxy) = (i64::MAX, i64::MIN, i64::MAX, i64::MIN);
+        for y in 0..h {
+            for x in 0..w {
+                if id[y * w + x] == 0 {
+                    let (xi, yi) = (x as i64, y as i64);
+                    area += 1;
+                    sx += xi;
+                    sy += yi;
+                    minx = minx.min(xi);
+                    maxx = maxx.max(xi);
+                    miny = miny.min(yi);
+                    maxy = maxy.max(yi);
+                }
+            }
+        }
+        let lim = (maxx - minx + 1) + (maxy - miny + 1);
+        let rad = rays_exact(&id, w, 0, area, sx, sy, (minx, maxx, miny, maxy), lim);
+        let prof = profile_bytes(&rad);
+        let rows_json: Vec<String> = rows.iter().map(|r| format!("\"{}\"", r)).collect();
+        o.push_str(&format!(
+            "{{\"name\":\"{}\",\"rows\":[{}],\"area\":{},\"sx\":{},\"sy\":{},\"box\":[{},{},{},{}],\"lim\":{},\"rays\":{},\"profile\":{},\"canonical\":{}}}",
+            name,
+            rows_json.join(","),
+            area, sx, sy, minx, maxx, miny, maxy, lim,
+            arr_i64(&rad),
+            arr_u8(&prof),
+            arr_u8(&canonical_profile(&prof))
+        ));
+    }
+    o.push_str("],\n");
+
+    // ---- §4 the silhouette's ties: the section on each canvas and its seven
+    // other D4 images, and the key that settled the component ----
+    let rot = crate::keypoints::RotCache::new(&crate::keypoints::pattern());
+    let c4 = Config::default();
+    let c3 = Config { wire: WIRE_3, ..Config::default() };
+    const KEYS: [&str; 6] = ["area", "perimeter and box", "profile", "moments", "occupancy", "scan order"];
+    let sil = |im: &crate::synth::Img| -> String {
+        let f = hash(&im.px, im.w, im.h, &c4, &rot);
+        let off = section_offset("silhouette");
+        hex(&f.t1[off..off + 96])
+    };
+    o.push_str(&format!("\"silhouette_ties\":{{\"rgba\":{},\"canvases\":[\n", arr_u8(&TIE_RGBA)));
+    for (i, t) in W4_TIES.iter().enumerate() {
+        if i > 0 {
+            o.push_str(",\n");
+        }
+        let im = tie_canvas(t);
+        let key = crate::sections::silhouette_settled_by(&crate::front::normalise(&im.px, im.w, im.h, &c4).im).unwrap_or(0);
+        let stamps: Vec<String> = t
+            .stamps
+            .iter()
+            .map(|&((x, y), cells)| {
+                let c: Vec<String> = cells.iter().map(|c| format!("[{},{}]", c[0], c[1])).collect();
+                format!("{{\"at\":[{},{}],\"cells\":[{}]}}", x, y, c.join(","))
+            })
+            .collect();
+        let d4: Vec<String> = W4_D4_NAMES.iter().map(|g| format!("{{\"g\":\"{}\",\"silhouette\":\"{}\"}}", g, sil(&d4_named(&im, g)))).collect();
+        o.push_str(&format!(
+            "{{\"name\":\"{}\",\"w\":{},\"h\":{},\"stamps\":[{}],\"settled_by\":\"{}\",\n \"silhouette\":\"{}\",\n \"d4\":[{}]}}",
+            t.name,
+            t.w,
+            t.h,
+            stamps.join(","),
+            KEYS[key as usize],
+            sil(&im),
+            d4.join(",\n  ")
+        ));
+    }
+    o.push_str("\n]},\n");
+
+    // ---- whole hashes: every section, both tiers, both formats ----
+    o.push_str("\"images\":[\n");
+    for (i, &(name, w, h, seed, ncol, bg)) in W4_IMAGES.iter().enumerate() {
+        if i > 0 {
+            o.push_str(",\n");
+        }
+        let im = pixel_art(w, h, seed, ncol, bg);
+        let f4 = hash(&im.px, w, h, &c4, &rot);
+        let f3 = hash(&im.px, w, h, &c3, &rot);
+        let secs: Vec<String> = SECTIONS
+            .iter()
+            .map(|s| {
+                let off = section_offset(s.name);
+                format!("\"{}\":\"{}\"", s.name, hex16(&f4.t1[off..off + s.len]))
+            })
+            .collect();
+        o.push_str(&format!(
+            "{{\"name\":\"{}\",\"w\":{},\"h\":{},\"seed\":{},\"ncol\":{},\"bg\":{},\"pixels_sha256\":\"{}\",\n \"wire4\":{{",
+            name, w, h, seed, ncol, bg,
+            hex(&sha256(&im.px))
+        ));
+        if name == W4_FULL {
+            o.push_str(&format!("\"t1\":\"{}\",", hex(&f4.t1)));
+        }
+        o.push_str(&format!(
+            "\"t1_sha256\":\"{}\",\"t2_len\":{},\"t2_sha256\":\"{}\",\"sections\":{{{}}}}},\n \"wire3\":{{\"t1_sha256\":\"{}\",\"t2_len\":{},\"t2_sha256\":\"{}\"}}",
+            hex(&sha256(&f4.t1)),
+            f4.t2.len(),
+            hex(&sha256(&f4.t2)),
+            secs.join(","),
+            hex(&sha256(&f3.t1)),
+            f3.t2.len(),
+            hex(&sha256(&f3.t2))
+        ));
+        if W4_D4.contains(&name) {
+            o.push_str(",\n \"d4\":[");
+            for (j, g) in W4_D4_NAMES.iter().enumerate() {
+                if j > 0 {
+                    o.push(',');
+                }
+                let t = d4_named(&im, g);
+                let f = hash(&t.px, t.w, t.h, &c4, &rot);
+                o.push_str(&format!(
+                    "{{\"g\":\"{}\",\"t1_sha256\":\"{}\",\"t2_sha256\":\"{}\"}}",
+                    g,
+                    hex(&sha256(&f.t1)),
+                    hex(&sha256(&f.t2))
+                ));
+            }
+            o.push(']');
+        }
+        o.push('}');
+    }
+    o.push_str("\n]\n}\n");
+    o
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -667,5 +1019,27 @@ mod tests {
     fn checked_in_file_matches_reference() {
         let disk = include_str!("../../docs/golden/GOLDEN-004.json");
         assert_eq!(disk, golden_json(), "docs/golden/GOLDEN-004.json is stale");
+    }
+
+    /// Wire 4's file, likewise: regenerate with `printf g | cargo run --bin
+    /// paphcli > docs/golden/GOLDEN-W4.json`.
+    #[test]
+    fn checked_in_w4_file_matches_reference() {
+        let disk = include_str!("../../docs/golden/GOLDEN-W4.json");
+        assert_eq!(disk, golden_w4_json(), "docs/golden/GOLDEN-W4.json is stale");
+    }
+
+    /// The names the file uses for the square's symmetries are its eight
+    /// elements, each once.
+    #[test]
+    fn w4_d4_names_are_the_group() {
+        let im = crate::synth::pixel_art(7, 5, 3, 5, 2);
+        let mut seen: Vec<Vec<u8>> = vec![im.px.clone()];
+        for g in W4_D4_NAMES {
+            let t = d4_named(&im, g);
+            assert!(!seen.contains(&t.px), "{} repeats an element", g);
+            seen.push(t.px);
+        }
+        assert_eq!(seen.len(), 8);
     }
 }

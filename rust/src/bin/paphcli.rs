@@ -1,16 +1,19 @@
 //! Parity harness.
 //!   hash:    [b"H"][u32 w][u32 h][RGBA]  ->  [u32 t1len][u32 t2len][t1][t2]
+//!            (the default wire, 4; [b"3"] the same framing, wire 3)
 //!   compare: [b"C"][u32 a1][u32 a2][u32 b1][u32 b2][wires] -> [u32 len][json]
 //!   golden:  [b"G"] -> the SPEC-004 §20 golden vectors as JSON (see golden.rs)
+//!            [b"g"] -> wire 4's (docs/golden/GOLDEN-W4.json)
 //!   bench:   [b"B"][u32 w][u32 h][u32 iters][RGBA] -> stage timings as JSON.
 //!            Split by stage on purpose: the interesting question is never
 //!            "how long did it take" but "whose code was it", and the answer
-//!            here is that hashing is the frozen v3 wire and not the 4.2
-//!            keypoint budget.
+//!            here is that hashing is the wire (format 3 or 4) and not the
+//!            4.2 keypoint budget.
 //!   v4:      [b"V"][u32 a1][u32 a2][u32 b1][u32 b2][wires] -> compare_v4 JSON
 //!            (Config::default + CAL-001-PROVISIONAL; the parity4 surface)
 //!   v41:     [b"W"] same framing -> compare_v41 JSON under CAL-003-PROPOSED
-//!   v42:     [b"X"] same framing -> compare_v42 JSON under CAL-004-PROPOSED
+//!   v42:     [b"X"] same framing -> compare_v42 JSON under the shipped profile
+//!            (CAL-007-PROVISIONAL from 1.2; [b"Y"] the same under CAL-004-PROPOSED)
 use paph::compare::compare;
 use paph::config::Config;
 use paph::keypoints::{pattern, RotCache};
@@ -69,8 +72,9 @@ fn main() {
             );
             o.write_all(paph::v41::to_json_v41(&r).as_bytes()).unwrap();
         }
-        b'X' => {
-            // SPEC-004.2: same framing as 'V'/'W', comparator 42 under cal004.
+        b'X' | b'Y' => {
+            // SPEC-004.2: same framing as 'V'/'W', comparator 42 under the
+            // shipped profile ('X', CAL-007 from 1.2) or CAL-004 ('Y').
             let (a1, a2, b1, b2) = (rd(&buf, 1), rd(&buf, 5), rd(&buf, 9), rd(&buf, 13));
             let mut p = 17usize;
             let at1 = &buf[p..p + a1];
@@ -80,7 +84,7 @@ fn main() {
             let bt1 = &buf[p..p + b1];
             p += b1;
             let bt2 = &buf[p..p + b2];
-            let prof = paph::calibration::Profile::cal004();
+            let prof = if buf[0] == b'Y' { paph::calibration::Profile::cal004() } else { paph::calibration::Profile::shipped() };
             let r = paph::v42::compare_v42(
                 at1, if a2 > 0 { Some(at2) } else { None },
                 bt1, if b2 > 0 { Some(bt2) } else { None },
@@ -101,7 +105,7 @@ fn main() {
             let bt1 = &buf[p..p + b1];
             p += b1;
             let bt2 = &buf[p..p + b2];
-            let prof = paph::calibration::Profile::cal004();
+            let prof = paph::calibration::Profile::shipped();
             let (o2a, o2b) = (if a2 > 0 { Some(at2) } else { None }, if b2 > 0 { Some(bt2) } else { None });
             let j = match buf[0] {
                 b'S' => paph::report::screen(&paph::v42::screen_v42(at1, o2a, bt1, o2b, &cfg, &prof)),
@@ -141,16 +145,17 @@ fn main() {
                 }
                 eprintln!("hash sections at {}x{}:", w, h);
                 t!("normalise", paph::front::normalise(px, w, h, &cfg));
-                let thumb = sec::thumbnail16(im);
-                t!("thumb16", sec::thumbnail16(im));
-                t!("dct", sec::hierarchical_dct(&thumb));
+                let wire = cfg.wire;
+                let thumb = sec::thumbnail16(im, wire);
+                t!("thumb16", sec::thumbnail16(im, wire));
+                t!("dct", sec::hierarchical_dct(&thumb, wire));
                 t!("brightness", sec::brightness_record(&thumb));
                 t!("palette", sec::identity_palette(im));
                 t!("rag", sec::sparse_rag(im));
-                t!("shapes", sec::shape_signatures(im));
+                t!("shapes", sec::shape_signatures(im, wire));
                 t!("runs", sec::run_lengths(im));
                 t!("local", sec::local_fingerprints(im, &cfg));
-                t!("silhouette", sec::silhouette(im));
+                t!("silhouette", sec::silhouette(im, wire));
                 t!("colour", sec::colour_digest(im));
                 t!("keypoints", paph::keypoints::keypoints(im, &cfg, &rot));
             }
@@ -231,10 +236,14 @@ fn main() {
         b'G' => {
             o.write_all(paph::golden::golden_json().as_bytes()).unwrap();
         }
-        b'H' => {
+        b'g' => {
+            o.write_all(paph::golden::golden_w4_json().as_bytes()).unwrap();
+        }
+        b'H' | b'3' => {
             let (w, h) = (rd(&buf, 1), rd(&buf, 5));
             let rot = RotCache::new(&pattern());
-            let fp = hash(&buf[9..9 + w * h * 4], w, h, &cfg, &rot);
+            let hc = if buf[0] == b'3' { Config { wire: paph::config::WIRE_3, ..cfg } } else { cfg };
+            let fp = hash(&buf[9..9 + w * h * 4], w, h, &hc, &rot);
             o.write_all(&(fp.t1.len() as u32).to_le_bytes()).unwrap();
             o.write_all(&(fp.t2.len() as u32).to_le_bytes()).unwrap();
             o.write_all(&fp.t1).unwrap();

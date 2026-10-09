@@ -74,22 +74,29 @@ ok(sp.xid() === xp.id(), 'the shipped SI profile is bound to the shipped X profi
 ok(simd.siprofile(sp.bytes()).id() === sp.id(), 'the artefact round-trips', sp.bytes().length + ' B');
 {
   const calib = join(root, 'docs', 'calibration');
-  ok(Buffer.from(sp.bytes()).equals(readFileSync(join(calib, 'SI3-PROVISIONAL.psi'))), 'the shipped SI profile is SI3-PROVISIONAL, byte for byte', sp.id().slice(0, 16));
-  // SI1 (1.1.0's) is SI2's fit bound to X1: under X1 it signs a work with
-  // the same bytes SI2 does under X2 — the route lanes SI bands did not move
-  const x1 = simd.xprofile({ x: readFileSync(join(calib, 'X1-PROVISIONAL.pxcl')) });
+  ok(Buffer.from(sp.bytes()).equals(readFileSync(join(calib, 'SI4-PROVISIONAL.psi'))), 'the shipped SI profile is SI4-PROVISIONAL, byte for byte', sp.id().slice(0, 16));
+  // the earlier profiles still load: X1 (1.0) and X2 (1.1) with their base,
+  // CAL-004; SI1 bound to X1, SI2 and SI3 to X2
+  const cal004 = readFileSync(join(calib, 'CAL-004-PROPOSED.pcal'));
+  const x1 = simd.xprofile({ base: cal004, x: readFileSync(join(calib, 'X1-PROVISIONAL.pxcl')) });
+  const x2 = simd.xprofile({ base: cal004, x: readFileSync(join(calib, 'X2-PROVISIONAL.pxcl')) });
   const s1 = simd.siprofile(readFileSync(join(calib, 'SI1-PROVISIONAL.psi')));
   const s2 = simd.siprofile(readFileSync(join(calib, 'SI2-PROVISIONAL.psi')));
+  const s3 = simd.siprofile(readFileSync(join(calib, 'SI3-PROVISIONAL.psi')));
   ok(s1.xid() === x1.id(), 'SI1 is bound to X1', s1.id().slice(0, 16) + ' → ' + s1.xid().slice(0, 16));
+  ok(s2.xid() === x2.id() && s3.xid() === x2.id(), 'SI2 and SI3 are bound to X2', s3.id().slice(0, 16) + ' → ' + s3.xid().slice(0, 16));
+  // SI1 is SI2's fit bound to X1: under X1 it signs a work with the same
+  // bytes SI2 does under X2 — the route lanes SI bands did not move
   let same = 0;
   for (const it of items) {
-    const a = simd.sisig(it.fp, { profile: s1, xprofile: x1 }), b = simd.sisig(it.fp, { profile: s2 });
+    const a = simd.sisig(it.fp, { profile: s1, xprofile: x1 }), b = simd.sisig(it.fp, { profile: s2, xprofile: x2 });
     same += Buffer.from(a.bytes).equals(Buffer.from(b.bytes)) ? 1 : 0;
   }
   ok(same === items.length, 'SI1 under X1 and SI2 under X2 sign every work alike', `${same} of ${items.length}`);
-  let refused = false;
-  try { simd.sisig(simd.xprepare(items[0].fp), { profile: s1 }); } catch (e) { refused = true; }
-  ok(refused, 'SI1 refuses a side prepared under X2');
+  let refused = 0;
+  try { simd.sisig(simd.xprepare(items[0].fp), { profile: s3 }); } catch (e) { refused++; }
+  try { simd.sisig(items[0].fp, { profile: s3 }); } catch (e) { refused++; }
+  ok(refused === 2, 'SI3 refuses a side prepared, and wires read, under the shipped X3');
 }
 const info = sp.info();
 ok(info.probes >= 1 && info.budget > 0 && info.features === 1, 'profile info', JSON.stringify(info));

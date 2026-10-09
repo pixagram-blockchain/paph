@@ -19,12 +19,18 @@
 })(typeof self !== 'undefined' ? self : this, function () {
 'use strict';
 
-var VERSION = 3;
+/* The wire format hash() writes by default (option `wire`); parseT1 reads 3
+   and 4.  Wire 4 (docs/SPEC-W4-paph-wire4.md) samples five things so that a
+   mirrored or quarter-turned image hashes to the mirrored or quarter-turned
+   sections exactly, on canvases of any size; wire 3's code paths are kept. */
+var VERSION = 4;
+var WIRE_3 = 3, WIRE_4 = 4;
 
 /* ---- knobs --------------------------------------------------------
  * SPEC-003 P1: every knob that is a genuine trade-off is now a COMPARE-time
- * knob.  Nothing below changes the wire bytes except localCount, localWindows
- * and kpCount.  Re-calibrating `evidence`, `scoring`, `hammingT`, thresholds
+ * knob.  Nothing below changes the wire bytes except the front end's knobs,
+ * localCount, localWindows, kpCount, sketchCount, kpSelect and wire (the
+ * format itself).  Re-calibrating `evidence`, `scoring`, `hammingT`, thresholds
  * or the verdict lattice costs milliseconds per pair and no re-hashing.
  *
  * `keepDC` and `ragEndpoint` are GONE as knobs: v3 stores both sides
@@ -42,6 +48,7 @@ var DEFAULTS = {
   kpCount:       512,     // Tier 2 cap — SPEC-004.2 §2 raised it from 256
   kpSelect:      1,       // SPEC-004.2 §3: 0 = 4.1 strength/grid, 1 = 4.2 quality
   sketchCount:   32,      // Tier 1 cap
+  wire:          4,       // the wire format written: 4 (1.2), or 3 (1.0–1.1)
 
   /* --- compare time (free to re-derive at any moment) --- */
   hammingT:      8,
@@ -357,13 +364,25 @@ function indexImage(px, w, h) {
  *    Hard pixel boundaries survive; bilinear would invent colours that
  *    are not in the palette.
  * ------------------------------------------------------------------ */
-function areaMajority(idx, w, h, nw, nh, pal) {
+/* The pixel span [x0, x1) of cell i of n across w pixels.  Wire 3 cuts at
+   floor(i*w/n) and gives each edge pixel to the cell on its right, which a
+   flip moves unless n divides w.  Wire 4's cells are CLOSED — from
+   floor(i*w/n) to ceil((i+1)*w/n) — so a pixel an edge cuts belongs to both,
+   a flip maps cell i onto cell n-1-i exactly, and where n divides w the
+   spans are wire 3's. */
+function cellSpan(i, w, n, closed) {
+  var x0 = idiv(i * w, n);
+  var x1 = closed ? idiv((i + 1) * w + n - 1, n) : idiv((i + 1) * w, n);
+  if (x1 <= x0) x1 = x0 + 1;
+  return [x0, x1];
+}
+function areaMajority(idx, w, h, nw, nh, pal, closed) {
   var out = new Int32Array(nw * nh);
   var tally = new Int32Array(pal.length + 1);       // slot 0 = transparent
   for (var j = 0; j < nh; j++) {
-    var y0 = idiv(j * h, nh), y1 = idiv((j + 1) * h, nh); if (y1 <= y0) y1 = y0 + 1;
+    var ys = cellSpan(j, h, nh, closed), y0 = ys[0], y1 = ys[1];
     for (var i = 0; i < nw; i++) {
-      var x0 = idiv(i * w, nw), x1 = idiv((i + 1) * w, nw); if (x1 <= x0) x1 = x0 + 1;
+      var xs = cellSpan(i, w, nw, closed), x0 = xs[0], x1 = xs[1];
       tally.fill(0);
       for (var y = y0; y < y1 && y < h; y++)
         for (var x = x0; x < x1 && x < w; x++) tally[idx[y * w + x] + 1]++;
@@ -409,7 +428,7 @@ function bandMap(idx, pal) {
  *  buys tone-shift invariance.  `keepDC` puts it back.
  * ------------------------------------------------------------------ */
 
-function dct2(src, N) {
+function dct2Wire3(src, N) {
   var t = cosTable(N), tmp = new Int32Array(N * N), out = new Int32Array(N * N), u, i, j, s;
   for (j = 0; j < N; j++)
     for (u = 0; u < N; u++) {
@@ -420,6 +439,29 @@ function dct2(src, N) {
     for (var v = 0; v < N; v++) {
       s = 0; for (j = 0; j < N; j++) s += tmp[j * N + u] * t[v * N + j];
       out[v * N + u] = (s + (QONE >> 1)) >> Q;
+    }
+  return out;
+}
+
+/* Wire 4 — the same transform rounded ONCE, at the end, half away from zero:
+   out[v][u] = round(sum_j sum_i src[j][i]*t[u][i]*t[v][j] / 2^28).  Two
+   rounded passes are not equivariant (a quarter turn swaps which runs first,
+   and (s + 1/2) >> Q is not odd); the tables are exactly odd/even symmetric,
+   so with one odd rounding a flip negates the odd frequencies exactly and a
+   transpose exchanges u and v exactly.  Every sum stays below 2^44: a double
+   holds it exactly, and the integers are the Rust engine's. */
+function dct2Exact(src, N) {
+  var t = cosTable(N), row = new Float64Array(N * N), out = new Int32Array(N * N), u, i, j, v, s;
+  for (j = 0; j < N; j++)
+    for (u = 0; u < N; u++) {
+      s = 0; for (i = 0; i < N; i++) s += src[j * N + i] * t[u * N + i];
+      row[j * N + u] = s;
+    }
+  for (u = 0; u < N; u++)
+    for (v = 0; v < N; v++) {
+      s = 0; for (j = 0; j < N; j++) s += row[j * N + u] * t[v * N + j];
+      var m = Math.floor(((s < 0 ? -s : s) + 134217728) / 268435456);
+      out[v * N + u] = s < 0 ? -m : m;
     }
   return out;
 }
@@ -471,7 +513,8 @@ function quantiseBlock(co, bits, keepDC, bytes, off) {
   return (n * bits) >> 3;
 }
 
-function hierarchicalDCT(thumb16, keepDC) {
+function hierarchicalDCT(thumb16, keepDC, wire) {
+  var dct2 = wire === WIRE_3 ? dct2Wire3 : dct2Exact;
   var out = new Uint8Array(256), i, x, y;
   quantiseBlock(dct2(thumb16, 16), 2, keepDC, out, 0);              // 64 B
   var off = 64;
@@ -496,8 +539,8 @@ function hierarchicalDCT(thumb16, keepDC) {
    median opaque luminance rather than 0: filling holes with black
    manufactures an edge that the same sprite composited on a host would
    not have, and the two maps of one drawing then share almost nothing. */
-function thumbnail16(im) {
-  var m = areaMajority(im.idx, im.w, im.h, 16, 16, im.pal);
+function thumbnail16(im, wire) {
+  var m = areaMajority(im.idx, im.w, im.h, 16, 16, im.pal, wire !== WIRE_3);
   var lums = [];
   for (var i = 0; i < im.pal.length; i++) for (var k = 0; k < 1; k++) lums.push(im.pal[i].lum);
   lums.sort(function (a, b) { return a - b; });
@@ -609,7 +652,166 @@ function sparseRAG(im) {
  * must be able to abstain, and the reason letting it leak into the interior
  * descriptors (as the v2 L2 half did, by flattening alpha to black) is wrong.
  * ------------------------------------------------------------------ */
-function silhouetteSignature(im) {
+/* A component's central moments about its exact centroid, times its area —
+   area*sum(x^2) - sum(x)^2 and the like — in BigInt (the products pass 2^53):
+   [M20, M02, M11]. */
+function exactMoments(id, w, c) {
+  var Sxx = BigInt(0), Syy = BigInt(0), Sxy = BigInt(0), x, y;
+  for (y = c.miny; y <= c.maxy; y++) {
+    var rsx = 0, rsxx = 0, cnt = 0;
+    for (x = c.minx; x <= c.maxx; x++) {
+      if (id[y * w + x] !== c.id) continue;
+      rsx += x; rsxx += x * x; cnt++;
+    }
+    if (!cnt) continue;
+    var Y = BigInt(y);
+    Sxx += BigInt(rsxx); Sxy += Y * BigInt(rsx); Syy += Y * Y * BigInt(cnt);
+  }
+  var A = BigInt(c.area), SX = BigInt(c.sx), SY = BigInt(c.sy);
+  return [A * Sxx - SX * SX, A * Syy - SY * SY, A * Sxy - SX * SY];
+}
+
+/* A component's 8x8 occupancy over its box (0-255 a cell), the cells closed. */
+function occupancyCells(id, w, c) {
+  var bw = c.maxx - c.minx + 1, bh = c.maxy - c.miny + 1, cell = new Int32Array(64), x, y;
+  for (var gy = 0; gy < 8; gy++) {
+    var ys = cellSpan(gy, bh, 8, true);
+    for (var gx = 0; gx < 8; gx++) {
+      var xs = cellSpan(gx, bw, 8, true), on = 0, tot = 0;
+      for (y = c.miny + ys[0]; y < c.miny + ys[1]; y++) for (x = c.minx + xs[0]; x < c.minx + xs[1]; x++) {
+        tot++; if (id[y * w + x] === c.id) on++;
+      }
+      cell[gy * 8 + gx] = tot ? idiv(on * 255, tot) : 0;
+    }
+  }
+  return cell;
+}
+
+/* The entries of `list` whose key is the best, in their order; cmp(a, b) > 0
+   when a is better. */
+function keepBest(list, keyOf, cmp) {
+  var keys = list.map(keyOf), top = keys[0], i, kept = [];
+  for (i = 1; i < keys.length; i++) if (cmp(keys[i], top) > 0) top = keys[i];
+  for (i = 0; i < list.length; i++) if (cmp(keys[i], top) === 0) kept.push(list[i]);
+  return kept;
+}
+function cmpBig(a, b) { return a > b ? 1 : a < b ? -1 : 0; }
+
+/* Wire 4's silhouette: wire 3's 66 bytes sampled so a mirrored or quarter-
+   turned image gives the mirrored or quarter-turned record — rays from the
+   exact centroid, moments about the exact centroid, the occupancy cells
+   closed, rows and columns binned by their opaque runs — plus the component's
+   box at bytes 66-69 (u16 width, u16 height).  Several components of the
+   largest area: the longest perimeter, then the longer and then the shorter
+   side, then the least canonical profile, then the greater principal moments
+   (the larger and the smaller of M20 and M02, then |M11|), then the least
+   canonical occupancy, each key computed only for the components still tied;
+   then scan order, which only twins (one shape, two orientations) reach. */
+function silhouette4(im) {
+  var w = im.w, h = im.h, n = w * h, i, x, y, k;
+  var out = new Uint8Array(96);
+  var opaque = 0;
+  for (i = 0; i < n; i++) if (im.idx[i] >= 0) opaque++;
+  if (opaque === 0 || opaque * 100 > n * 98 || opaque * 100 < n * 2)
+    return { bytes: out, measurable: false };
+  var id = new Int32Array(n).fill(-1), stack = new Int32Array(n), comps = [];
+  for (var s0 = 0; s0 < n; s0++) {
+    if (id[s0] >= 0 || im.idx[s0] < 0) continue;
+    var cid = comps.length, sp = 0, area = 0, sx = 0, sy = 0;
+    var minx = w, maxx = -1, miny = h, maxy = -1;
+    stack[sp++] = s0; id[s0] = cid;
+    while (sp) {
+      var p = stack[--sp], px = p % w, py = (p / w) | 0;
+      area++; sx += px; sy += py;
+      if (px < minx) minx = px; if (px > maxx) maxx = px;
+      if (py < miny) miny = py; if (py > maxy) maxy = py;
+      if (px > 0     && id[p - 1] < 0 && im.idx[p - 1] >= 0) { id[p - 1] = cid; stack[sp++] = p - 1; }
+      if (px < w - 1 && id[p + 1] < 0 && im.idx[p + 1] >= 0) { id[p + 1] = cid; stack[sp++] = p + 1; }
+      if (py > 0     && id[p - w] < 0 && im.idx[p - w] >= 0) { id[p - w] = cid; stack[sp++] = p - w; }
+      if (py < h - 1 && id[p + w] < 0 && im.idx[p + w] >= 0) { id[p + w] = cid; stack[sp++] = p + w; }
+    }
+    comps.push({ id: cid, area: area, sx: sx, sy: sy, minx: minx, maxx: maxx, miny: miny, maxy: maxy });
+  }
+  if (!comps.length) return { bytes: out, measurable: false };
+  function profileOf(c) {
+    return profileBytes(raysExact(id, w, c.id, c.area, c.sx, c.sy, c.minx, c.maxx, c.miny, c.maxy,
+                                  (c.maxx - c.minx + 1) + (c.maxy - c.miny + 1)));
+  }
+  var maxArea = 0;
+  for (i = 0; i < comps.length; i++) if (comps[i].area > maxArea) maxArea = comps[i].area;
+  var tied = [];
+  for (i = 0; i < comps.length; i++) if (comps[i].area === maxArea) tied.push(i);
+  if (tied.length > 1) {
+    tied = keepBest(tied, function (j) {
+      var c = comps[j], per = 0;
+      for (var yy = c.miny; yy <= c.maxy; yy++) for (var xx = c.minx; xx <= c.maxx; xx++) {
+        var q = yy * w + xx;
+        if (id[q] !== c.id) continue;
+        if (xx === 0 || yy === 0 || xx === w - 1 || yy === h - 1 ||
+            id[q - 1] !== c.id || id[q + 1] !== c.id || id[q - w] !== c.id || id[q + w] !== c.id) per++;
+      }
+      var bw0 = c.maxx - c.minx + 1, bh0 = c.maxy - c.miny + 1;
+      return [per, Math.max(bw0, bh0), Math.min(bw0, bh0)];
+    }, function (a, b) { return (a[0] - b[0]) || (a[1] - b[1]) || (a[2] - b[2]); });
+  }
+  if (tied.length > 1)
+    tied = keepBest(tied, function (j) { return canonicalProfile(profileOf(comps[j])); },
+                    function (a, b) { return lexCmp(b, a); });
+  if (tied.length > 1)
+    tied = keepBest(tied, function (j) {
+      var m = exactMoments(id, w, comps[j]), Z = BigInt(0);
+      return [m[0] > m[1] ? m[0] : m[1], m[0] > m[1] ? m[1] : m[0], m[2] < Z ? -m[2] : m[2]];
+    }, function (a, b) { return cmpBig(a[0], b[0]) || cmpBig(a[1], b[1]) || cmpBig(a[2], b[2]); });
+  if (tied.length > 1)
+    tied = keepBest(tied, function (j) { return canonical64(occupancyCells(id, w, comps[j]), false); },
+                    function (a, b) { return (b[0] - a[0]) || (b[1] - a[1]); });
+  var c = comps[tied[0]];
+  var bw = c.maxx - c.minx + 1, bh = c.maxy - c.miny + 1;
+  out.set(profileOf(c), 0);
+
+  /* central moments about the exact centroid (exactMoments) */
+  var mm = exactMoments(id, w, c), A = BigInt(c.area);
+  var m20 = mm[0], m02 = mm[1], m11 = mm[2];
+  var den = A * A * BigInt(bw * bw + bh * bh);
+  if (den < BigInt(1)) den = BigInt(1);
+  var K = BigInt(1020), Z = BigInt(0), C255 = BigInt(255);
+  var q8 = function (m) { var v = m * K / den; return v < Z ? 0 : v > C255 ? 255 : Number(v); };
+  out[32] = q8(m20);
+  out[33] = q8(m02);
+  out[34] = q8(m11 < Z ? -m11 : m11);
+  out[35] = m11 < Z ? 1 : 0;
+  var asp = clamp(idiv(bw * 256, Math.max(1, bh)), 0, 65535);
+  out[36] = asp & 255; out[37] = (asp >> 8) & 255;
+  out[38] = clamp(idiv(c.area * 255, Math.max(1, bw * bh)), 0, 255);
+  out[39] = clamp(comps.length, 0, 255);
+
+  /* rows and columns by their number of opaque runs, 8 bins each */
+  var rowT = new Int32Array(8), colT = new Int32Array(8), t, prev, v;
+  for (y = 0; y < h; y++) { t = 0; prev = false;
+    for (x = 0; x < w; x++) { v = im.idx[y * w + x] >= 0; if (v && !prev) t++; prev = v; }
+    rowT[Math.min(7, t)]++; }
+  for (x = 0; x < w; x++) { t = 0; prev = false;
+    for (y = 0; y < h; y++) { v = im.idx[y * w + x] >= 0; if (v && !prev) t++; prev = v; }
+    colT[Math.min(7, t)]++; }
+  for (i = 0; i < 8; i++) { out[40 + i] = clamp(idiv(rowT[i] * 255, h), 0, 255);
+                            out[48 + i] = clamp(idiv(colT[i] * 255, w), 0, 255); }
+
+  /* 8x8 occupancy of the box, closed cells, D4-canonical (64 bits) */
+  var bits = canonical64(occupancyCells(id, w, c), false);
+  out[56] = bits[0] & 255; out[57] = (bits[0] >>> 8) & 255;
+  out[58] = (bits[0] >>> 16) & 255; out[59] = (bits[0] >>> 24) & 255;
+  out[60] = bits[1] & 255; out[61] = (bits[1] >>> 8) & 255;
+  out[62] = (bits[1] >>> 16) & 255; out[63] = (bits[1] >>> 24) & 255;
+  var frac = clamp(idiv(opaque * 65535, n), 0, 65535);
+  out[64] = frac & 255; out[65] = (frac >> 8) & 255;
+  var bwc = Math.min(bw, 65535), bhc = Math.min(bh, 65535);
+  out[66] = bwc & 255; out[67] = (bwc >> 8) & 255;
+  out[68] = bhc & 255; out[69] = (bhc >> 8) & 255;
+  return { bytes: out, measurable: true };
+}
+
+function silhouetteSignature(im, wire) {
+  if (wire !== WIRE_3) return silhouette4(im);
   var w = im.w, h = im.h, n = w * h, i, x, y;
   var out = new Uint8Array(96);
   var opaque = 0;
@@ -756,11 +958,11 @@ function colourDigest(im) {
 var SHAPE_BYTES = 41, SHAPE_N = 8;   /* v2 stored 5; five was a budget
    constraint, not a finding (SPEC-003 §6.3). */
 
-function shapeGrid(im, mode) {
+function shapeGrid(im, mode, wire) {
   var long = Math.max(im.w, im.h);
   var cell = Math.max(1, idiv(long + 127, 128));   /* integer ceil */
   var gw = Math.max(4, idiv(im.w + cell - 1, cell)), gh = Math.max(4, idiv(im.h + cell - 1, cell));
-  var m = areaMajority(im.idx, im.w, im.h, gw, gh, im.pal);
+  var m = areaMajority(im.idx, im.w, im.h, gw, gh, im.pal, wire !== WIRE_3);
   var lab = new Int8Array(gw * gh);
   for (var i = 0; i < m.length; i++)
     lab[i] = m[i] < 0 ? -1 : (mode === 'palette' ? (im.pal[m[i]].slot & 7) : im.pal[m[i]].band);
@@ -785,14 +987,188 @@ function components(g) {
       if (y > 0     && id[p - w] < 0 && lab[p - w] === lab[p]) { id[p - w] = cid; stack[sp++] = p - w; }
       if (y < h - 1 && id[p + w] < 0 && lab[p + w] === lab[p]) { id[p + w] = cid; stack[sp++] = p + w; }
     }
-    out.push({ id: cid, area: area, cx: idiv(sx, area), cy: idiv(sy, area),
+    out.push({ id: cid, area: area, cx: idiv(sx, area), cy: idiv(sy, area), sx: sx, sy: sy, seed: s,
                minx: minx, maxx: maxx, miny: miny, maxy: maxy, band: lab[s] });
   }
   return { id: id, list: out };
 }
 
-function shapeSignatures(im, mode) {
-  var g = shapeGrid(im, mode), cc = components(g), w = g.w, h = g.h;
+/* Wire 4 — the 32 radial extents of component `cid` of the label map `id`
+   (w wide), cast from its EXACT centroid (sx/area, sy/area).  Ray k's point
+   at step s is the centroid plus s*(RAYS.c[k], RAYS.s[k])/1024, pixel (i, j)
+   being the closed unit square centred on (i, j); the point is inside when
+   EVERY pixel whose square holds it is in the component (one, two on an edge,
+   four on a corner), and the extent is the LAST step inside, not the first
+   outside, so a centroid in a hole needs no stand-in.  The ray stops where it
+   leaves the component's open box, which it cannot re-enter.  The numbers are
+   exact rationals below 2^38: the Rust engine's integers. */
+function raysExact(id, w, cid, area, sx, sy, minx, maxx, miny, maxy, lim) {
+  if (area < 1) area = 1;
+  var D = 2048 * area;
+  /* per axis the coordinate plus 1/2 as q + r/D (0 <= r < D): pixel q, on an
+     edge when r = 0.  A step adds 2*area*RAY[k] to r, at most D in
+     magnitude, so one carry restores the range — the floor and remainder a
+     division per step would give. */
+  var qx0 = Math.floor(sx / area), fx = 2048 * (sx - qx0 * area) + 1024 * area;
+  var qy0 = Math.floor(sy / area), fy = 2048 * (sy - qy0 * area) + 1024 * area;
+  if (fx >= D) { fx -= D; qx0++; }
+  if (fy >= D) { fy -= D; qy0++; }
+  var rad = new Array(32);
+  for (var k = 0; k < 32; k++) {
+    var dx = 2 * area * RAYS.c[k], dy = 2 * area * RAYS.s[k];
+    var ix = qx0, rx = fx, iy = qy0, ry = fy, last = 0;
+    for (var s = 1; s <= lim; s++) {
+      rx += dx; if (rx >= D) { rx -= D; ix++; } else if (rx < 0) { rx += D; ix--; }
+      ry += dy; if (ry >= D) { ry -= D; iy++; } else if (ry < 0) { ry += D; iy--; }
+      var onx = rx === 0, ony = ry === 0;
+      if (ix > maxx || ix < minx || (ix === minx && onx) || iy > maxy || iy < miny || (iy === miny && ony)) break;
+      var x0 = onx ? ix - 1 : ix, y0 = ony ? iy - 1 : iy, inside = true;
+      for (var yy = y0; yy <= iy && inside; yy++)
+        for (var xx = x0; xx <= ix; xx++) if (id[yy * w + xx] !== cid) { inside = false; break; }
+      if (inside) last = s;
+    }
+    rad[k] = last;
+  }
+  return rad;
+}
+/* ray k after symmetry e of the square (bit 2 swap the axes, then bit 0 flip
+   x, then bit 1 flip y) */
+function rayD4(k, e) {
+  if (e & 4) k = 8 - k;
+  if (e & 1) k = 16 - k;
+  if (e & 2) k = -k;
+  return ((k % 32) + 32) % 32;
+}
+function profileBytes(rad) {
+  var rmax = 1, k, p = new Uint8Array(32);
+  for (k = 0; k < 32; k++) if (rad[k] > rmax) rmax = rad[k];
+  for (k = 0; k < 32; k++) p[k] = clamp(idiv(255 * rad[k], rmax), 0, 255);
+  return p;
+}
+function lexCmp(a, b) {
+  for (var k = 0; k < a.length; k++) if (a[k] !== b[k]) return a[k] - b[k];
+  return 0;
+}
+/* rayD4 as a table, RAY_D4[e][k] */
+var RAY_D4 = (function () {
+  var t = [];
+  for (var e = 0; e < 8; e++) {
+    var r = new Uint8Array(32);
+    for (var k = 0; k < 32; k++) r[k] = rayD4(k, e);
+    t.push(r);
+  }
+  return t;
+})();
+/* the least of a profile's eight images under the square's symmetries */
+function canonicalProfile(p) {
+  var best = null;
+  for (var e = 0; e < 8; e++) {
+    var v = new Uint8Array(32), perm = RAY_D4[e];
+    for (var k = 0; k < 32; k++) v[k] = p[perm[k]];
+    if (best === null || lexCmp(v, best) < 0) best = v;
+  }
+  return best;
+}
+/* 4-connected perimeter of every component (the shapes section's rule) */
+function perimetersOf(id, w, h, n) {
+  var per = new Array(n).fill(0);
+  for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) {
+    var p = y * w + x, c = id[p];
+    if (c < 0) continue;
+    if (x === 0 || y === 0 || x === w - 1 || y === h - 1 ||
+        id[p - 1] !== c || id[p + 1] !== c || id[p - w] !== c || id[p + w] !== c) per[c]++;
+  }
+  return per;
+}
+/* complement components inside the box that never touch its border */
+function holesOf(id, w, c) {
+  var bw = c.maxx - c.minx + 1, bh = c.maxy - c.miny + 1, holes = 0, x, y;
+  var seen = new Uint8Array(bw * bh), st = new Int32Array(bw * bh);
+  for (y = 0; y < bh; y++) for (x = 0; x < bw; x++) {
+    var q = y * bw + x;
+    if (seen[q] || id[(y + c.miny) * w + x + c.minx] === c.id) continue;
+    var sp = 0, touch = false; st[sp++] = q; seen[q] = 1;
+    while (sp) {
+      var r = st[--sp], rx = r % bw, ry = (r / bw) | 0;
+      if (rx === 0 || ry === 0 || rx === bw - 1 || ry === bh - 1) touch = true;
+      var nb = [rx > 0 ? r - 1 : -1, rx < bw - 1 ? r + 1 : -1, ry > 0 ? r - bw : -1, ry < bh - 1 ? r + bw : -1];
+      for (var j = 0; j < 4; j++) {
+        var t = nb[j]; if (t < 0 || seen[t]) continue;
+        var tx = t % bw, ty = (t / bw) | 0;
+        if (id[(ty + c.miny) * w + tx + c.minx] === c.id) continue;
+        seen[t] = 1; st[sp++] = t;
+      }
+    }
+    if (!touch) holes++;
+  }
+  return holes;
+}
+/* Wire 4's shape records: kept and ordered by keys no symmetry moves — area,
+   perimeter, holes, the longer and the shorter side of the box, the radial
+   profile in its canonical orientation, the band folded under inversion —
+   and only then by scan order, which decides only between one shape in two
+   orientations.  Bytes 6 and 7 hold the box's width and height. */
+function shapeRecords4(g, cc) {
+  var w = g.w, h = g.h, comps = cc.list, id = cc.id;
+  var per = perimetersOf(id, w, h, comps.length);
+  var areas = comps.map(function (c) { return c.area; }).sort(function (a, b) { return b - a; });
+  var floorArea = areas.length >= SHAPE_N ? areas[SHAPE_N - 1] : 0;
+  var cand = [];
+  /* a region's profile, canonical profile and holes are functions of its
+     cells within its box alone: regions of one small shape (a dither's
+     blocks, often hundreds tied at the eighth area) are measured once,
+     keyed by the box and its cell mask when the box holds at most 64 cells */
+  var memo = new Map();
+  var measure = function (c, bw, bh) {
+    var rad = raysExact(id, w, c.id, c.area, c.sx, c.sy, c.minx, c.maxx, c.miny, c.maxy, bw + bh);
+    var prof = profileBytes(rad);
+    return { rad: rad, prof: prof, canon: canonicalProfile(prof), holes: holesOf(id, w, c) };
+  };
+  for (var i = 0; i < comps.length; i++) {
+    var c = comps[i];
+    if (c.area < floorArea) continue;
+    var bw = c.maxx - c.minx + 1, bh = c.maxy - c.miny + 1, m;
+    if (bw * bh <= 64) {
+      var lo = 0, hi = 0;
+      for (var y = 0; y < bh; y++) for (var x = 0; x < bw; x++) {
+        if (id[(c.miny + y) * w + c.minx + x] !== c.id) continue;
+        var bit = y * bw + x;
+        if (bit < 32) lo |= 1 << bit; else hi |= 1 << (bit - 32);
+      }
+      var key = bw + ',' + bh + ',' + (hi >>> 0) + ',' + (lo >>> 0);
+      m = memo.get(key);
+      if (!m) { m = measure(c, bw, bh); memo.set(key, m); }
+    } else m = measure(c, bw, bh);
+    var b = c.band;
+    cand.push({ i: i, holes: m.holes, long: Math.max(bw, bh), short: Math.min(bw, bh),
+                prof: m.prof, canon: m.canon, fold: Math.min(b, 7 - b), rad: m.rad });
+  }
+  cand.sort(function (x, y) {
+    return (comps[y.i].area - comps[x.i].area) || (per[y.i] - per[x.i]) || (y.holes - x.holes) ||
+           (y.long - x.long) || (y.short - x.short) || lexCmp(x.canon, y.canon) || (x.fold - y.fold) || (x.i - y.i);
+  });
+  cand = cand.slice(0, SHAPE_N);
+  var out = new Uint8Array(SHAPE_BYTES * SHAPE_N), shapes = [];
+  for (var s = 0; s < cand.length; s++) {
+    var k = cand[s], cc2 = comps[k.i], o = s * SHAPE_BYTES;
+    var bw2 = cc2.maxx - cc2.minx + 1, bh2 = cc2.maxy - cc2.miny + 1;
+    out[o] = cc2.area & 255; out[o + 1] = (cc2.area >> 8) & 255;
+    out[o + 2] = (cc2.area >> 16) & 255; out[o + 3] = (cc2.area >> 24) & 255;
+    out[o + 4] = per[k.i] & 255; out[o + 5] = (per[k.i] >> 8) & 255;
+    out[o + 6] = bw2; out[o + 7] = bh2;
+    out[o + 8] = clamp(k.holes, 0, 255);
+    out.set(k.prof, o + 9);
+    var rmax = 1; for (var q = 0; q < 32; q++) if (k.rad[q] > rmax) rmax = k.rad[q];
+    shapes.push({ area: cc2.area, per: per[k.i], aspect: clamp(idiv(bw2 * 256, Math.max(1, bh2)), 0, 65535),
+                  holes: k.holes, w: bw2, h: bh2, cx: cc2.sx / cc2.area, cy: cc2.sy / cc2.area,
+                  gw: w, gh: h, cell: g.cell, rmax: rmax, radial: Array.prototype.slice.call(k.prof) });
+  }
+  return { bytes: out, count: cand.length, shapes: shapes, grid: g, cc: cc };
+}
+
+function shapeSignatures(im, mode, wire) {
+  var g = shapeGrid(im, mode, wire), cc = components(g), w = g.w, h = g.h;
+  if (wire !== WIRE_3) return shapeRecords4(g, cc);
   var list = cc.list.slice().sort(function (a, b) {
     return b.area - a.area || a.miny - b.miny || a.minx - b.minx;
   }).slice(0, SHAPE_N);
@@ -1793,6 +2169,9 @@ var SECTIONS = [
   { id: 10, name: 'colour',     len: 80   },
   { id: 11, name: 'sketch',     len: 1152 }
 ];
+/* the most records each section holds: its length over its record's (the DCT,
+   the brightness record and the silhouette are one record, the runs three) */
+var SECTION_CAP = [1, 1, 24, 48, 8, 3, 128, 128, 1, 16, 32];
 var HEADER1 = 64, HEADER2 = 32, KP_REC = 40;
 var T1_BYTES = (function () { var t = HEADER1;
   for (var i = 0; i < SECTIONS.length; i++) t += SECTIONS[i].len; return t; })();   // 3952
@@ -1809,7 +2188,7 @@ var F_KPQ = 32;
 function serializeT1(d) {
   var b = new Uint8Array(T1_BYTES);
   b[0] = 0x50; b[1] = 0x41; b[2] = 0x50; b[3] = 0x48;      // "PAPH"
-  b[4] = VERSION; b[5] = 1;
+  b[4] = d.version === WIRE_3 ? WIRE_3 : WIRE_4; b[5] = 1;
   b[6] = d.flags & 255; b[7] = (d.flags >> 8) & 255;
   b[8] = d.width & 255; b[9] = (d.width >> 8) & 255;
   b[10] = d.height & 255; b[11] = (d.height >> 8) & 255;
@@ -1835,7 +2214,7 @@ function parseT1(bytes) {
   var b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   if (b.length !== T1_BYTES) throw new RangeError('paph3: tier 1 must be ' + T1_BYTES + ' bytes, got ' + b.length);
   if (!(b[0] === 0x50 && b[1] === 0x41 && b[2] === 0x50 && b[3] === 0x48)) throw new TypeError('paph3: bad magic');
-  if (b[4] !== VERSION) throw new RangeError('paph3: unsupported version ' + b[4] + ' (v2 wires MUST be rejected, never reinterpreted)');
+  if (b[4] !== WIRE_3 && b[4] !== WIRE_4) throw new RangeError('paph3: unsupported version ' + b[4] + ' (v2 wires MUST be rejected, never reinterpreted)');
   if (b[5] !== 1) throw new RangeError('paph3: not a tier 1 wire');
   var c = crc32(b, HEADER1, T1_BYTES);
   var want = (b[60] | (b[61] << 8) | (b[62] << 16) | (b[63] << 24)) >>> 0;
@@ -1847,17 +2226,28 @@ function parseT1(bytes) {
     var s = SECTIONS[i], o = 16 + i * 4;
     if (b[o] !== s.id) throw new RangeError('paph3: section table mismatch at ' + i);
     d.counts[s.name] = b[o + 1];
+    /* the checksum covers the sections, not this table: a count past what its
+       section holds would send every reader past the section's end */
+    if (b[o + 1] > SECTION_CAP[i]) throw new RangeError('paph3: section count exceeds what the section holds (' + s.name + ')');
     d[s.name] = b.subarray(SEC_OFF[s.name], SEC_OFF[s.name] + s.len);
+  }
+  /* wire 4's shape records carry their region's box on the shape grid, whose
+     sides are 1 to 128 */
+  if (b[4] === WIRE_4) {
+    for (var r = 0; r < d.counts.shapes; r++) {
+      var bw = d.shapes[r * 41 + 6], bh = d.shapes[r * 41 + 7];
+      if (bw < 1 || bw > 128 || bh < 1 || bh > 128) throw new RangeError('paph3: shape record box out of range');
+    }
   }
   d.maxDim = Math.max(d.width, d.height);
   return d;
 }
 
-function serializeT2(kps, t1crc, maxDim, xmax, select) {
+function serializeT2(kps, t1crc, maxDim, xmax, select, version) {
   var n = Math.min(kps.length, MAX_KP_COUNT);
   var b = new Uint8Array(HEADER2 + n * KP_REC);
   b[0] = 0x50; b[1] = 0x41; b[2] = 0x50; b[3] = 0x32;      // "PAP2"
-  b[4] = VERSION; b[5] = 2;
+  b[4] = version === WIRE_3 ? WIRE_3 : WIRE_4; b[5] = 2;
   b[6] = n & 255; b[7] = (n >> 8) & 255;
   b[8] = t1crc & 255; b[9] = (t1crc >>> 8) & 255; b[10] = (t1crc >>> 16) & 255; b[11] = (t1crc >>> 24) & 255;
   b[12] = maxDim & 255; b[13] = (maxDim >> 8) & 255;
@@ -1958,22 +2348,23 @@ function hash(a, b, c, opts) {
     if (scale > 1) { var s = shrink(px, w, h, scale); px = s.px; w = s.w; h = s.h; flags |= F_UPSCALED; } }
   if (o.foldInvert) flags |= F_INVFOLD;
 
+  var wire = o.wire === WIRE_3 ? WIRE_3 : WIRE_4;
   var im = indexImage(px, w, h);
-  var thumb = thumbnail16(im);
+  var thumb = thumbnail16(im, wire);
   var flat = true;
   for (var ti = 1; ti < thumb.length; ti++) if (thumb[ti] !== thumb[0]) { flat = false; break; }
   if (flat) flags |= F_FLAT;
 
   /* DC is ALWAYS dropped from the code (SPEC-003 §6.3); it lives in its own
      record instead, so the index bucket cannot degenerate into brightness. */
-  var dct   = hierarchicalDCT(thumb, false);
+  var dct   = hierarchicalDCT(thumb, false, wire);
   var brt   = brightnessRecord(im, thumb);
   var pal   = identityPalette(im);
   var rag   = sparseRAG(im);
-  var shp   = shapeSignatures(im, 'band');
+  var shp   = shapeSignatures(im, 'band', wire);
   var runs  = runLengths(im);
   var loc   = localFingerprints(im, o);
-  var sil   = silhouetteSignature(im);
+  var sil   = silhouetteSignature(im, wire);
   var col   = colourDigest(im);
   if (sil.measurable) flags |= F_SIL;
 
@@ -1983,7 +2374,7 @@ function hash(a, b, c, opts) {
   var sk    = sketchBytes(kp.list, o.sketchCount);
 
   var d = {
-    version: VERSION, flags: flags, width: W0, height: H0, scale: scale,
+    version: wire, flags: flags, width: W0, height: H0, scale: scale,
     kpCount: kp.list.length,
     sec: { dct: dct, brightness: brt, palette: pal.bytes, rag: rag.bytes,
            shapes: shp.bytes, runs: runs, local: loc.bytes, anchors: loc.pos,
@@ -1994,7 +2385,7 @@ function hash(a, b, c, opts) {
   };
   var t1 = serializeT1(d);
   var t1crc = (t1[60] | (t1[61] << 8) | (t1[62] << 16) | (t1[63] << 24)) >>> 0;
-  var t2 = serializeT2(kp.list, t1crc, kp.maxDim, kp.xmax, kpSel);
+  var t2 = serializeT2(kp.list, t1crc, kp.maxDim, kp.xmax, kpSel, wire);
 
   var parsed = parseT1(t1);
   parsed.t1 = t1; parsed.t2 = t2;
@@ -2015,6 +2406,9 @@ function hash(a, b, c, opts) {
  * What is new: the geometric channel now has a null (§9.4), so it can be
  * REASONED about beside the others instead of being a bare count bolted on.
  * ================================================================== */
+
+/* a pair whose wires are of different formats (one 3, one 4) is refused */
+var E_WIRE_MISMATCH = 'tier 1 wire formats differ (3 and 4): hash both sides with one format';
 
 function chanceCorrect(raw, ctl) {
   if (ctl >= SCALE) return 0;
@@ -2281,12 +2675,18 @@ function localChannel(A, B, T, o) {
                  + (coh.measurable ? '; ' + coh.inliers + ' agree on one placement' : '') };
 }
 /* ---- 9.3c  shapes ------------------------------------------------- */
+/* the aspect field of a shape record as wire 3 stores it, floor(256*w/h);
+   wire 4 stores the box's width and height and this recomputes it */
+function shapeAspect(d, s, o) {
+  return d.version === WIRE_3 ? s[o + 6] | (s[o + 7] << 8)
+                              : clamp(idiv(s[o + 6] * 256, Math.max(1, s[o + 7])), 0, 65535);
+}
 function readShapes(d) {
   var out = [];
   for (var i = 0; i < d.counts.shapes; i++) {
     var o = i * SHAPE_BYTES, s = d.shapes;
     out.push({ area: (s[o] | (s[o + 1] << 8) | (s[o + 2] << 16) | (s[o + 3] << 24)) >>> 0,
-               per: s[o + 4] | (s[o + 5] << 8), aspect: s[o + 6] | (s[o + 7] << 8), holes: s[o + 8],
+               per: s[o + 4] | (s[o + 5] << 8), aspect: shapeAspect(d, s, o), holes: s[o + 8],
                radial: Array.prototype.slice.call(s.subarray(o + 9, o + 41)) });
   }
   return out;
@@ -2775,6 +3175,11 @@ function compare(a, b, opts) {
   var kpA = A2 ? parseT2(A2).list : readSketch(A);
   var kpB = B2 ? parseT2(B2).list : readSketch(B);
   var xmaxA = A2 ? parseT2(A2).xmax : clamp(idiv((A.width - 1) * 65535, A.maxDim), 0, 65535);
+  if (A.version !== B.version) {
+    var em = new RangeError('paph3: ' + E_WIRE_MISMATCH);
+    em.code = 'WIRE_MISMATCH';
+    throw em;
+  }
 
   var ch = {
     dct:        dctChannel(A, B),
@@ -2931,6 +3336,7 @@ Config.validate = function (c) {
   if (!(c.kpCount >= 0 && c.kpCount <= MAX_KP_COUNT)) return 'kpCount out of range (tier 2 holds 512)';
   if (!(c.kpSelect === 0 || c.kpSelect === 1)) return 'kpSelect must be 0 (4.1) or 1 (4.2)';
   if (!(c.sketchCount >= 0 && c.sketchCount <= 32)) return 'sketchCount out of range (tier 1 holds 32)';
+  if (!(c.wire === 3 || c.wire === 4)) return 'wire must be 3 or 4';
   if (!(c.geoMinCorr >= 2 && c.geoMinCorr <= 64)) return 'geoMinCorr out of range';
   return null;
 };
@@ -2957,7 +3363,8 @@ var DEFAULT_CONFIG = (function () {
 })();
 
 var paph3 = {
-  VERSION: VERSION, T1_BYTES: T1_BYTES, KP_REC: KP_REC, KP_MAX: MAX_KP_COUNT,
+  VERSION: VERSION, WIRE_3: WIRE_3, WIRE_4: WIRE_4, E_WIRE_MISMATCH: E_WIRE_MISMATCH,
+  T1_BYTES: T1_BYTES, KP_REC: KP_REC, KP_MAX: MAX_KP_COUNT,
   F_KPQ: F_KPQ, selectGrid: selectGrid, selectQuality: selectQuality,
   SECTIONS: SECTIONS, SECTION_OFFSETS: SEC_OFF,
   DEFAULTS: DEFAULTS, DEFAULT_CONFIG: DEFAULT_CONFIG,
@@ -2979,7 +3386,13 @@ var paph3 = {
                /* v4.2 (SPEC-004.2 geom42) reads these; visibility only. */
                popcount: popcount32, levelDim: levelDim, scaleBin: scaleBin,
                sh10: sh10, shr16: shr16, SCALE_Q16: SCALE_Q16,
-               MAX_KP_COUNT: MAX_KP_COUNT, F_KPQ: F_KPQ }
+               MAX_KP_COUNT: MAX_KP_COUNT, F_KPQ: F_KPQ,
+               /* wire 4 (SPEC-W4); test/wire4-golden.cjs reads these. */
+               cellSpan: cellSpan, areaMajority: areaMajority,
+               dct2Exact: dct2Exact, dct2Wire3: dct2Wire3,
+               raysExact: raysExact, rayD4: rayD4,
+               profileBytes: profileBytes, canonicalProfile: canonicalProfile,
+               exactMoments: exactMoments, occupancyCells: occupancyCells, canonical64: canonical64 }
 };
 
 return paph3;

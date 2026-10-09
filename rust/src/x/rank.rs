@@ -167,7 +167,8 @@ pub fn xrank(
             rec[field::SCREEN] = ScreenState::Refused.code();
             continue;
         };
-        if !profiles_ok || c.xid != xid {
+        // another X profile, or another wire format than the query's
+        if !profiles_ok || c.xid != xid || c.p.t1.version != q.p.t1.version {
             rec[field::STATE] = state_code("Indeterminate");
             rec[field::SCREEN] = ScreenState::Refused.code();
             continue;

@@ -165,7 +165,7 @@ const cases = [
   ['upscaled copy (42, 2x 42)', A, U],
   ['swapped order (1337, 42)', B, A]
 ];
-console.log('\ncomparator 42 (CAL-004-PROPOSED) — the shipped entry');
+console.log('\ncomparator 42 (CAL-007-PROVISIONAL) — the shipped entry');
 for (const [name, a, b] of cases) {
   const ru = pick42(rustCmp('X', a, b));
   const js = pick42(paph.compare(a.t1, a.t2, b.t1, b.t2, {}, paph.cal()));

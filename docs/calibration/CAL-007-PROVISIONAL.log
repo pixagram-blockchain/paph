@@ -1,0 +1,146 @@
+# docs/calibration/CAL-007-PROVISIONAL.log — @pixagram/paph-x 1.2.0
+#
+# CAL-007-PROVISIONAL, comparator 42's calibration from 1.2: CAL-004-PROPOSED with the moderate
+# structural bar (thresholds[2]) at 3300. Quoted by docs/SPEC-004.2-paph-v42.md §19, the CHANGELOG,
+# docs/PAPH-X.md §4, docs/SPEC-SI-paph-si.md §11, docs/SEARCH.md §4 and the integration's README.
+# Native, one core of a shared two-core container (Intel(R) Xeon(R) Processor @ 2.10GHz), rustc 1.97.0;
+# rust/target/release/{sibench,xbench,xcli}, run from rust/; Node 22.22 for the test/ and tools/ scripts,
+# run from the repository root. Counts, classes, recalls and artefacts are deterministic and reproduce
+# exactly from the same snapshot; timings move by a few per cent between runs, and more when the host is
+# busy.
+#
+# The snapshot is 1.1.2's (docs/calibration/SI3-PROVISIONAL.log, run 0): rust/target/chain-corpus,
+# head block 987642, manifest sha256 8d06cb4711e0e1e9c43dabe50edf3ed11039975a17dbc9bfec0afcf1dd27c055.
+# The images are not in the repository; no author or permlink appears in the output.
+#
+# Runs 1 and 2 hash both corpora in wire 4 (docs/SPEC-W4-paph-wire4.md); every later run here, in
+# X3-PROVISIONAL.log and in SI4-PROVISIONAL.log reads those caches. Run 3 fits the bar on the chain's
+# pairs of two authors' works and shows what it moves on the chain, its real-base corpus and the
+# synthetic corpus; without --out it writes docs/calibration/CAL-007-PROVISIONAL.pcal — here a copy,
+# and the sha256 lines at the end show it equal to the committed file. Run 4 snapshots every pair's
+# lattice inputs (TSV under rust/target/calib) and run 5 recomputes the lattice on them, under
+# CAL-004 (which must reproduce the verdict each row recorded) and under CAL-007.
+
+$ sibench corpus --chain target/chain-corpus
+target/chain-corpus (head block 987642, 2026-10-08T19:55:51 UTC, manifest 8d06cb4711e0e1e9): 177 artworks, 0 byte-identical re-uploads left out, 3 over 466033 px left out as bases; hashed 11654 works (174 bases × 21 variants + 8000 synthetic distractors) in 34.7 s → target/si-corpus/chain.bin
+
+$ sibench corpus
+hashed 10520 works (120 bases × 21 variants + 8000 distractors) in 20.4 s → target/si-corpus/corpus.bin
+
+$ sibench calfit --out /tmp/CAL-007-refit.pcal     # without --out: writes docs/calibration/CAL-007-PROVISIONAL.pcal
+The chain's works — target/chain-corpus (head block 987642, 2026-10-08T19:55:51 UTC, manifest 8d06cb4711e0e1e9): 177 works by 30 authors, 15576 pairs: 14412 of two authors' works, 1164 of one author's.
+
+The highest structural scores of certifiable pairs of two authors' works (below the strong bar 4000): 3232, 3134, 3120, 2900, 2879, 2846, 2818, 2814, 2810, 2806, 2798, 2786.
+The fitted moderate structural bar: the next multiple of 100 above 3232: 3300 (CAL-004: 2400; Profile::cal007: 3300).
+
+| moderate bar | pairs of two authors' works at or above it, certifiable | share of 14412 |
+|---:|---:|---:|
+| 2400 | 222 | 1.540 % |
+| 2600 | 61 | 0.423 % |
+| 2800 | 10 | 0.069 % |
+| 3000 | 3 | 0.021 % |
+| 3200 | 1 | 0.007 % |
+| 3300 | 0 | 0.000 % |
+| 3400 | 0 | 0.000 % |
+Author fold 0 alone (5482 pairs of two of its authors' works) fits 3200; of the other fold's 1748 such pairs, 1 reach it.
+Author fold 1 alone (1748 pairs of two of its authors' works) fits 3300; of the other fold's 5482 such pairs, 0 reach it.
+
+| the chain's pairs | two authors: CAL-004 | CAL-007 | one author: CAL-004 | CAL-007 |
+|---|---:|---:|---:|---:|
+| Unrelated | 2418 | 2418 | 228 | 228 |
+| Related | 11772 | 11994 | 897 | 934 |
+| Suspected | 222 | 0 | 37 | 0 |
+| Copy | 0 | 0 | 2 | 2 |
+
+On the chain's real-base corpus (each work under the twenty transforms): comparator 42's states of each base against each transform of it (Copy includes Identical), CAL-004 → CAL-007.
+
+| transform | Copy | Suspected | Related | Unrelated |
+|---|---:|---:|---:|---:|
+| mirror | 174 | 0 | 0 | 0 |
+| rot90 | 173 | 1 | 0 | 0 |
+| rot180 | 174 | 0 | 0 | 0 |
+| transpose | 173 | 1 | 0 | 0 |
+| invert | 15 | 159 → 158 | 0 → 1 | 0 |
+| recolour | 172 | 2 → 1 | 0 → 1 | 0 |
+| chswap | 173 | 1 | 0 | 0 |
+| palshuffle | 1 | 105 → 31 | 68 → 142 | 0 |
+| up2 | 174 | 0 | 0 | 0 |
+| up3 | 174 | 0 | 0 | 0 |
+| down70 | 166 | 6 → 4 | 2 → 4 | 0 |
+| resample90 | 172 | 2 → 1 | 0 → 1 | 0 |
+| up150 | 173 | 1 | 0 | 0 |
+| crop80 | 173 | 1 | 0 | 0 |
+| crop67 | 169 | 4 → 3 | 1 → 2 | 0 |
+| corner50 | 163 | 8 → 3 | 3 → 8 | 0 |
+| paste | 157 | 11 → 8 | 4 → 7 | 2 |
+| shift1 | 174 | 0 | 0 | 0 |
+| dither | 173 | 0 | 1 | 0 |
+| matte | 172 | 0 | 1 | 1 |
+
+All 3480 transformed copies: Copy 3095 → 3095; Suspected or above 3397 → 3309 (88 pairs change state, every one Suspected → Related).
+Unrelated pairs (4176: each base against 24 distractors): Suspected 0 → 0, Copy 0 → 0, Related 812 → 812.
+
+On the synthetic corpus: comparator 42's states of each base against each transform of it (Copy includes Identical), CAL-004 → CAL-007.
+
+| transform | Copy | Suspected | Related | Unrelated |
+|---|---:|---:|---:|---:|
+| mirror | 92 | 21 | 7 | 0 |
+| rot90 | 65 | 48 → 45 | 7 → 10 | 0 |
+| rot180 | 93 | 21 | 6 | 0 |
+| transpose | 71 | 42 → 41 | 7 → 8 | 0 |
+| invert | 9 | 99 → 87 | 12 → 24 | 0 |
+| recolour | 75 | 28 → 25 | 17 → 20 | 0 |
+| chswap | 73 | 39 | 8 | 0 |
+| palshuffle | 20 | 76 → 62 | 9 → 23 | 15 |
+| up2 | 94 | 19 | 7 | 0 |
+| up3 | 93 | 20 | 7 | 0 |
+| down70 | 0 | 32 → 14 | 73 → 91 | 15 |
+| resample90 | 15 | 55 → 27 | 50 → 78 | 0 |
+| up150 | 6 | 102 → 85 | 12 → 29 | 0 |
+| crop80 | 47 | 48 → 32 | 25 → 41 | 0 |
+| crop67 | 25 | 46 → 23 | 45 → 68 | 4 |
+| corner50 | 6 | 35 → 15 | 64 → 84 | 15 |
+| paste | 40 | 13 → 10 | 33 → 36 | 34 |
+| shift1 | 84 | 29 | 7 | 0 |
+| dither | 20 | 44 → 28 | 53 → 69 | 3 |
+| matte | 67 | 45 → 44 | 8 → 9 | 0 |
+
+All 2400 transformed copies: Copy 995 → 995; Suspected or above 1857 → 1682 (175 pairs change state, every one Suspected → Related).
+Unrelated pairs (10020: each base against 24 distractors and every other base): Suspected 140 → 74, Copy 3 → 3, Related 2630 → 2696.
+
+wrote /tmp/CAL-007-refit.pcal: CAL-007-PROVISIONAL, 320 bytes, calibration_profile_id 741afad9252f2ccb4ef6f691725b740d1b100a92858b71346910aed457eee899
+
+$ sibench calib
+calib: 177 chain works, every pair (23.4 s)
+calib: target/si-corpus/chain.bin → target/calib/realbase.tsv (33.3 s)
+calib: target/si-corpus/corpus.bin → target/calib/synth.tsv (39.6 s)
+
+$ python3 ../tools/cal-lattice.py
+
+chain-pairs.tsv: 15576 rows; CAL-004 recomputed differs from the recorded verdict on 0
+| pairs | CAL-004 → CAL-007 | count |
+|---|---|---:|
+| chain (one author) | Suspected → Related | 37 |
+| chain (two authors) | Suspected → Related | 222 |
+| (every other row keeps its state) | | 15317 |
+
+realbase.tsv: 7656 rows; CAL-004 recomputed differs from the recorded verdict on 0
+| pairs | CAL-004 → CAL-007 | count |
+|---|---|---:|
+| copy | Suspected → Related | 88 |
+| (every other row keeps its state) | | 7568 |
+
+synth.tsv: 12420 rows; CAL-004 recomputed differs from the recorded verdict on 0
+| pairs | CAL-004 → CAL-007 | count |
+|---|---|---:|
+| bases | Suspected → Related | 46 |
+| copy | Suspected → Related | 175 |
+| distractor | Suspected → Related | 20 |
+| (every other row keeps its state) | | 12179 |
+
+$ sha256sum target/si-corpus/chain.bin target/si-corpus/chain.bin.bases.tsv target/si-corpus/corpus.bin /tmp/CAL-007-refit.pcal ../docs/calibration/CAL-007-PROVISIONAL.pcal
+5bb444bb118c4d5c1562f30cba5d6bb35f6a460970f73b9aa7144184257e7e62  target/si-corpus/chain.bin
+ada27caaa20fd116cb25ef18ec0cc5664f5586f189052d120d8893eb52142820  target/si-corpus/chain.bin.bases.tsv
+40ae4ecde80081c737c5eab86d38edc5082020d81f70ca09b4f037199154ac77  target/si-corpus/corpus.bin
+741afad9252f2ccb4ef6f691725b740d1b100a92858b71346910aed457eee899  /tmp/CAL-007-refit.pcal
+741afad9252f2ccb4ef6f691725b740d1b100a92858b71346910aed457eee899  ../docs/calibration/CAL-007-PROVISIONAL.pcal

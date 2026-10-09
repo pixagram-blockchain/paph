@@ -1,7 +1,8 @@
 /**
  * @pixagram/paph-x — PAPH 4.2 with PAPH-X.
  *
- * One wire, one comparator on the entry, one shipped calibration — and two
+ * One wire (format 4 from 1.2; `{ wire: 3 }` writes 1.0–1.1's), one comparator
+ * on the entry, one shipped calibration (CAL-007-PROVISIONAL) — and two
  * engines that agree on all of it byte for byte: JavaScript (this entry) and
  * the optimized Rust reference as WebAssembly (`wasm()`, or
  * `@pixagram/paph-x/wasm`).
@@ -47,6 +48,10 @@ export const compare = paph.compare;
 export const screen = paph.screen;
 export const cal = paph.cal;
 export const calibration = paph.calibration;
+/** CAL-007-PROVISIONAL (the shipped calibration from 1.2) and 1.1's CAL-004-PROPOSED */
+export const cal007 = paph.cal007;
+export const cal004 = paph.cal004;
+export const R_WIRE_MISMATCH = paph.R_WIRE_MISMATCH;
 export const profileEncode = paph.profileEncode;
 export const profileDecode = paph.profileDecode;
 export const profileId = paph.profileId;
@@ -66,6 +71,8 @@ export const Paph = wire.Paph;
 export const parseT1 = wire.parseT1;
 export const parseT2 = wire.parseT2;
 export const WIRE_VERSION = wire.VERSION;
+export const WIRE_3 = wire.WIRE_3;
+export const WIRE_4 = wire.WIRE_4;
 export const T1_BYTES = wire.T1_BYTES;
 export const KP_MAX = wire.KP_MAX;
 export const F_KPQ = wire.F_KPQ;

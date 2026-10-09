@@ -1,0 +1,541 @@
+# docs/calibration/SI4-PROVISIONAL.log — @pixagram/paph-x 1.2.0
+#
+# SI4-PROVISIONAL: 1.1.2's chain fit (sibench chainfit) re-run on the chain's works hashed in wire 4,
+# bound to X3-PROVISIONAL. Quoted by docs/SPEC-SI-paph-si.md (header, §0, §6, §9.8, §10, §11),
+# docs/PAPH-X.md §4, docs/SEARCH.md, the README and the CHANGELOG.
+# Native, one core of a shared two-core container (Intel(R) Xeon(R) Processor @ 2.10GHz), rustc 1.97.0;
+# rust/target/release/{sibench,xbench,xcli}, run from rust/; Node 22.22 for the test/ and tools/ scripts,
+# run from the repository root. Counts, classes, recalls and artefacts are deterministic and reproduce
+# exactly from the same snapshot; timings move by a few per cent between runs, and more when the host is
+# busy.
+#
+# The snapshot is 1.1.2's (docs/calibration/SI3-PROVISIONAL.log, run 0): rust/target/chain-corpus,
+# head block 987642, manifest sha256 8d06cb4711e0e1e9c43dabe50edf3ed11039975a17dbc9bfec0afcf1dd27c055.
+# The images are not in the repository; no author or permlink appears in the output.
+#
+# Run 1 is every pair of the chain's 177 works under CAL-007 and CAL-004, XRank under X3 and X2,
+# SI3 and SI4. Run 2 fits SI4 (two held-out folds, then all 174 bases); without --out it writes
+# docs/calibration/SI4-PROVISIONAL.psi — here a copy, equal to the committed file (the sha256 lines
+# after run 4). Runs 3 and 4 are the funnel on the real-base corpus and on the synthetic corpus
+# under SI4. Runs 5-7 refit 1.1.1's SI2, 1.1.0's SI1 and 1.1.2's SI3 from the wire-3 caches with
+# this release's code: each equals its committed artefact, byte for byte.
+
+$ sibench chain
+The chain's artworks — target/chain-corpus (head block 987642, 2026-10-08T19:55:51 UTC, manifest 8d06cb4711e0e1e9): 177 artworks, 177 distinct images (0 byte-identical re-uploads left out), by 30 authors, posted 2026-09-04T18:54:45 to 2026-10-08T17:32:48 UTC; as uploaded: image/webp lossless 177
+
+| per work | min / p10 / p50 / p90 / max |
+|---|---:|
+| width, height (px) | 90 / 160 / 254 / 403 / 2160 · 91 / 167 / 252 / 369 / 1184 |
+| long side after the front end's integer downscale (px) | 91 / 186 / 274 / 421 / 2160 |
+| Tier-2 keypoints | 0 / 469 / 512 / 512 / 512 |
+| palette entries on the wire | 3 / 24 / 24 / 24 / 24 |
+| Tier-1 local codes | 59 / 128 / 128 / 128 / 128 |
+| hash, native, one core (ms) | 1 / 4 / 8 / 15 / 252 |
+| xprepare under X3 (ms) | 0 / 1 / 1 / 1 / 2 |
+
+Integerly upscaled (the hasher divides them first): 1 (1%). Real transparency or a folded matte (the SIL family present): 17 (10%), a matte folded: 10. Flat thumbnail: 2. Both sides multiples of 16 after the downscale: 16 (9%); long side at most 128 px: 3 (2%).
+As uploaded, long side over 430 px: 10; over 768² pixels, the pixagram-search integration's hashing budget: 3 (2160 × 1184, 1344 × 756, 1024 × 1024).
+Works with fewer than 8 keypoints: 1 (1%), fewer than 12 keypoints: 1 (1%), fewer than 32 keypoints: 1 (1%), fewer than 64 keypoints: 2 (1%).
+
+Every pair of distinct works (15576 pairs, 31152 queries in both arrival orders):
+
+| comparator 42 (lean) | pairs, CAL-007-PROVISIO | of them one author's (1164 such pairs in all) | pairs, CAL-004-PROPOSED | of them one author's |
+|---|---:|---:|---:|---:|
+| Unrelated | 2646 | 228 | 2646 | 228 |
+| Related | 12928 | 934 | 12669 | 897 |
+| Suspected | 0 | 0 | 259 | 37 |
+| Copy | 2 | 2 | 2 | 2 |
+| Identical | 0 | 0 | 0 | 0 |
+| Indeterminate | 0 | 0 | 0 | 0 |
+
+Comparator 42's class on the Suspected pairs: under CAL-007-PROVISIO none (no pair is Suspected); under CAL-004-PROPOSED partial agreement 259.
+
+Of the 2 pairs comparator 42 calls Copy or Identical, 2 have one author; XRank shown the target alone reads Copy on 4 of 4 queries under X3 and 4 under X2; comparator 42's own gated rank screens out 0 of the 2; SI4 admits 4 of the 4 queries at θ = 1. (The pairs: target/chain-corpus/copies.tsv.)
+On the 31148 other queries: XRank reads Copy on 0 under X3 and 0 under X2; SI4 admits 125 (0.40%).
+The route class under X3: Reject 14579 (93.6%), Defer 966 (6.2%), Fast 31 (0.2%), Absent 0; the pair screen: Reject 197, Defer 1362 (0 of them on the open structural door), Pass 14017, Identical 0; comparator 42's stage-1 screen passes 12372 (79.4%).
+Mean cost a pair, native, one core: comparator 42 1205 µs; comparator 42's gated rank (`rank`, gate: true — the stage-1 screen, and comparator 42 on the pairs it passes) 1100 µs a candidate; the pair screen (X3) 112.7 µs; XRank a query, X3 648 µs, X2 717 µs.
+XRank under X3, by how it decided: gated out 822 (90 µs each); decided by the cascade 30300 (662 µs each); EXACT42 ran (fallback) 30 (1847 µs each).
+Its states (Copy scope; queries, by comparator 42's state of the pair): Unrelated → gated out 302, Unrelated 34, NotCopy 4956; Related → gated out 520, Related 9060, NotCopy 16276; Copy → Copy 4. Comparator 42's own gated rank screens out, of the pairs it calls Unrelated / Related / Suspected / Copy: 1125 / 2079 / 0 / 0.
+On the 30330 queries that reached the cascade (decided there or by EXACT42), the sparse scan read every row of the smaller side on 30326 (100.0%) and computed 1.6% of the descriptor distances the exhaustive scan computes (237198200 of 14633593588); every structural channel was computed exactly on 7270 (24.0%).
+
+SI3, 1.1.2's chain fit on wire-3 hashes (bound to X2): its cells over the 177 works (fine 256 / coarse 16):
+
+| family | present | occupied fine | effective fine cells | largest fine cell | effective coarse cells | P(random pair shares a fine cell) |
+|---|---:|---:|---:|---:|---:|---:|
+| runs | 100% | 91 | 71 | 6.2% | 11.5 | 1/54 |
+| tone | 100% | 110 | 96 | 3.4% | 12.0 | 1/83 |
+| pal | 100% | 95 | 83 | 2.3% | 13.0 | 1/74 |
+| shape | 100% | 110 | 94 | 4.0% | 12.5 | 1/79 |
+| sil | 10% | 12 | 10 | 23.5% | 4.6 | 1/9 |
+| kpgeo | 99% | 114 | 103 | 2.3% | 15.5 | 1/93 |
+
+On the 31148 unrelated queries (ordered pairs, copies left out), per family: the share whose candidate reaches a probe level (a probed cell; for the MinHash families, enough equal lanes), and the mean weight it adds to the score.
+
+| family | reaches a level | mean weight |
+|---|---:|---:|
+| runs | 3.8% | -15.1 |
+| tone | 2.6% | -16.5 |
+| pal | 3.0% | -22.3 |
+| shape | 2.8% | -10.3 |
+| sil | 0.1% | -0.2 |
+| kpgeo | 1.8% | -13.6 |
+| local | 0.3% | -16.8 |
+| band | 1.4% | -9.2 |
+
+Their scores: p50 -113, p90 -65, p99 -18, max 92; admitted at the profile's θ = 1: 0.50%, at θ = 32 / 64 / 96: 0.1% / 0.0% / 0.0%. The copy queries admitted at θ: 4 of 4.
+
+SI4, fitted on these works' wire-4 hashes (in-sample; bound to X3): its cells over the 177 works (fine 256 / coarse 16):
+
+| family | present | occupied fine | effective fine cells | largest fine cell | effective coarse cells | P(random pair shares a fine cell) |
+|---|---:|---:|---:|---:|---:|---:|
+| runs | 100% | 91 | 71 | 6.2% | 11.5 | 1/54 |
+| tone | 100% | 108 | 94 | 3.4% | 12.2 | 1/81 |
+| pal | 100% | 95 | 83 | 2.3% | 13.0 | 1/74 |
+| shape | 100% | 125 | 114 | 2.3% | 15.8 | 1/102 |
+| sil | 10% | 12 | 10 | 23.5% | 4.6 | 1/9 |
+| kpgeo | 99% | 114 | 103 | 2.3% | 15.5 | 1/93 |
+
+On the 31148 unrelated queries (ordered pairs, copies left out), per family: the share whose candidate reaches a probe level (a probed cell; for the MinHash families, enough equal lanes), and the mean weight it adds to the score.
+
+| family | reaches a level | mean weight |
+|---|---:|---:|
+| runs | 3.8% | -15.1 |
+| tone | 2.6% | -17.4 |
+| pal | 3.0% | -22.3 |
+| shape | 1.6% | -13.0 |
+| sil | 0.1% | -0.2 |
+| kpgeo | 1.8% | -13.6 |
+| local | 0.3% | -17.8 |
+| band | 1.4% | -10.2 |
+
+Their scores: p50 -118, p90 -76, p99 -23, max 73; admitted at the profile's θ = 1: 0.40%, at θ = 32 / 64 / 96: 0.1% / 0.0% / 0.0%. The copy queries admitted at θ: 4 of 4.
+
+$ sibench chainfit --corpus chain.bin --out /tmp/SI4-refit.psi     # without --out: writes docs/calibration/SI4-PROVISIONAL.psi
+corpus: 11654 works (174 bases × 21 variants, 8000 distractors) opened and judged in 8.7 s
+PAPH-SI fitted on the chain's works — 174 real bases (88 and 86 in the two folds), 2 pairs of distinct originals comparator 42 calls Copy left out of the unrelated ones.
+
+| fitted on → measured on | profile | θ | copies admitted at θ | unrelated admitted at θ | at θ = 1: copies / unrelated | recall with 1% / 5% of unrelated admitted |
+|---|---|---:|---:|---:|---:|---:|
+| fold A → fold B | SI2 (synthetic) | 2 | 95.6% of 3062 | 48.82% of 7310 | 96.0% / 52.33% | 71.4% (θ 201) / 79.8% (θ 142) |
+| fold A → fold B | chain fit | 1 | 85.0% of 3062 | 0.93% of 7310 | 85.0% / 0.93% | 85.0% (θ 1) / 85.0% (θ 1) |
+|  | (sil kept SI2's codebook: under 40 works in the fold carry it) | | | | |
+| fold B → fold A | SI2 (synthetic) | 2 | 95.1% of 3128 | 50.41% of 7654 | 95.5% / 53.54% | 70.5% (θ 209) / 79.3% (θ 143) |
+| fold B → fold A | chain fit | 1 | 85.0% of 3128 | 0.51% of 7654 | 85.0% / 0.51% | 85.0% (θ 1) / 85.0% (θ 1) |
+|  | (sil kept SI2's codebook: under 40 works in the fold carry it) | | | | |
+
+Copies admitted at each profile's own θ, both folds together, by transform:
+
+| transform | SI2 (synthetic) | chain fit |
+|---|---:|---:|
+| mirror | 100% of 348 | 100% of 348 |
+| rot90 | 100% of 346 | 100% of 346 |
+| rot180 | 100% of 348 | 100% of 348 |
+| transpose | 100% of 346 | 100% of 346 |
+| invert | 100% of 30 | 100% of 30 |
+| recolour | 99% of 344 | 99% of 344 |
+| chswap | 100% of 346 | 100% of 346 |
+| palshuffle | 100% of 2 | 100% of 2 |
+| up2 | 100% of 348 | 100% of 348 |
+| up3 | 100% of 348 | 100% of 348 |
+| down70 | 86% of 332 | 29% of 332 |
+| resample90 | 99% of 344 | 85% of 344 |
+| up150 | 100% of 346 | 96% of 346 |
+| crop80 | 100% of 346 | 98% of 346 |
+| crop67 | 95% of 338 | 69% of 338 |
+| corner50 | 70% of 326 | 21% of 326 |
+| paste | 65% of 314 | 32% of 314 |
+| shift1 | 100% of 348 | 100% of 348 |
+| dither | 99% of 346 | 91% of 346 |
+| matte | 98% of 344 | 97% of 344 |
+
+Per family, the share of copy queries / unrelated queries whose candidate reaches a probe level (%):
+
+| | | runs | tone | pal | shape | sil | kpgeo | local | band |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| fold A → fold B | SI2 (synthetic) | 80 / 43 | 85 / 40 | 97 / 79 | 83 / 42 | 8 / 0 | 77 / 25 | 70 / 0 | 51 / 2 |
+| fold A → fold B | chain fit | 64 / 6 | 68 / 4 | 74 / 3 | 57 / 2 | 8 / 0 | 54 / 2 | 70 / 0 | 51 / 2 |
+| fold B → fold A | SI2 (synthetic) | 78 / 40 | 86 / 43 | 96 / 72 | 84 / 44 | 5 / 0 | 76 / 28 | 71 / 0 | 50 / 1 |
+| fold B → fold A | chain fit | 65 / 6 | 66 / 2 | 74 / 4 | 56 / 2 | 5 / 0 | 53 / 2 | 71 / 0 | 50 / 1 |
+
+fitted SI4-PROVISIONAL on all 174 bases' originals (sil kept SI2's codebook): 5334 bytes, id aa8ce6d311f4ce56e4636d7b0a30d892877d76ca0821d9563656c58b75cb033d → /tmp/SI4-refit.psi
+  probes 4  threshold 1  budget 2000
+  | family | weights none / near / exact | axis noise σ (projection units) |
+  | runs | -17 / 19 / 58 | [20278, 15359, 19742, 7881] |
+  | tone | -19 / 31 / 70 | [32701, 15100, 12275, 15482] |
+  | pal | -24 / 18 / 71 | [19780, 8131, 4505, 4575] |
+  | shape | -14 / 39 / 75 | [19474, 19360, 12554, 11248] |
+  | sil | -28 / -5 / 35 | [26709, 13396, 15634, 11953] |
+  | kpgeo | -15 / 45 / 69 | [15269, 10835, 14555, 10481] |
+  | local | [-18, 46, 146, 228] (0 / 1 / 2–3 / ≥4 equal band keys) | |
+  | band | [-11, 39, 122, 213] | |
+
+$ sibench eval --corpus chain.bin
+corpus: 11654 works (174 bases × 21 variants, 8000 distractors) opened and judged in 8.4 s
+PAPH-SI evaluation — profile SI4-PROVISIONAL (aa8ce6d311f4ce56), X X3-PROVISIONAL — 11654 works, eval population 4000 distractors
+
+## Cells: how the eval population spreads (fine 256 / coarse 16)
+
+| family | present | occupied fine | effective fine cells | largest fine cell | effective coarse cells | P(random pair shares a fine cell) |
+|---|---:|---:|---:|---:|---:|---:|
+| runs | 100% | 82 | 13 | 38.1% | 5.5 | 1/6 |
+| tone | 100% | 165 | 27 | 17.0% | 8.5 | 1/12 |
+| pal | 100% | 24 | 7 | 28.7% | 3.0 | 1/6 |
+| shape | 100% | 103 | 19 | 25.2% | 4.8 | 1/10 |
+| sil | 75% | 206 | 103 | 5.4% | 12.5 | 1/59 |
+| kpgeo | 65% | 178 | 47 | 16.6% | 8.7 | 1/20 |
+
+## Stability: where a copy lands relative to the query's probes (eval bases, every pair, both orders)
+
+Exact = the copy is in the query's own cell; probed = in one of its 4 probe cells. Random = a random eval distractor.
+
+| transform | runs | tone | pal | shape | sil | kpgeo | local | band |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| mirror | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 42 / 83 | 100 | 77 |
+| rot90 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 36 / 83 | 100 | 76 |
+| rot180 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 38 / 76 | 100 | 74 |
+| transpose | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 97 / 100 | 100 | 100 |
+| invert | 100 / 100 | 88 / 98 | 100 / 100 | 21 / 51 | 100 / 100 | 65 / 98 | 10 | 0 |
+| recolour | 38 / 71 | 9 / 20 | 15 / 26 | 40 / 60 | 50 / 70 | 16 / 52 | 99 | 91 |
+| chswap | 100 / 100 | 30 / 52 | 100 / 100 | 28 / 56 | 100 / 100 | 34 / 72 | 100 | 48 |
+| palshuffle | 97 / 97 | 2 / 4 | 94 / 96 | 13 / 22 | 67 / 72 | 10 / 21 | 2 | 0 |
+| up2 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 | 100 |
+| up3 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 | 100 |
+| down70 | 7 / 13 | 10 / 31 | 16 / 43 | 5 / 28 | 70 / 80 | 5 / 13 | 0 | 3 |
+| resample90 | 8 / 21 | 38 / 75 | 53 / 85 | 16 / 38 | 70 / 85 | 19 / 49 | 8 | 0 |
+| up150 | 0 / 2 | 71 / 96 | 87 / 100 | 16 / 44 | 90 / 100 | 7 / 17 | 0 | 3 |
+| crop80 | 26 / 51 | 23 / 36 | 16 / 29 | 2 / 15 | 25 / 38 | 5 / 15 | 99 | 41 |
+| crop67 | 21 / 40 | 17 / 30 | 9 / 15 | 3 / 8 | 0 / 0 | 3 / 7 | 73 | 30 |
+| corner50 | 14 / 30 | 6 / 15 | 7 / 10 | 0 / 3 | 14 / 14 | 0 / 1 | 24 | 8 |
+| paste | 0 / 2 | 2 / 4 | 0 / 3 | 1 / 3 | 50 / 50 | 1 / 4 | 59 | 6 |
+| shift1 | 71 / 95 | 73 / 94 | 93 / 100 | 28 / 59 | 90 / 100 | 41 / 84 | 100 | 79 |
+| dither | 7 / 11 | 29 / 58 | 92 / 99 | 22 / 60 | 60 / 80 | 26 / 70 | 2 | 12 |
+| matte | 15 / 41 | 45 / 74 | 73 / 84 | 27 / 51 | 30 / 35 | 31 / 70 | 97 | 71 |
+| *random pair* | 2.4 / 4.1 | 1.3 / 2.5 | 1.3 / 2.5 | 0.4 / 1.2 | 0.9 / 3.1 | 0.6 / 1.8 | 0.24 | 0.32 |
+
+Quantised families: % exact / % probed. MinHash families: % with at least one equal band key.
+
+## What a coarse-only match is worth (the note's 16-cell level)
+
+A candidate outside the query's 4 probe cells but inside its coarse cell, against one in neither: share of comparator-42 Copy pairs and of random pairs, and 16 × the log-likelihood ratio.
+
+| family | copy: probed | copy: coarse only | copy: neither | random: probed | random: coarse only | random: neither | weight of coarse only | weight of neither |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| runs | 60.5% | 6.6% | 32.9% | 4.6% | 5.0% | 90.4% | +4 | -16 |
+| tone | 66.7% | 7.9% | 25.4% | 2.5% | 3.9% | 93.6% | +11 | -21 |
+| pal | 73.0% | 4.3% | 22.8% | 2.3% | 2.3% | 95.4% | +10 | -23 |
+| shape | 57.8% | 8.9% | 33.3% | 1.5% | 4.6% | 93.9% | +11 | -17 |
+| sil | 82.7% | 2.2% | 15.1% | 3.5% | 6.7% | 89.9% | -16 | -28 |
+| kpgeo | 56.2% | 9.4% | 34.4% | 1.8% | 4.6% | 93.6% | +11 | -16 |
+
+## Sampling grids and the square's symmetries (every base, both splits)
+
+Share of D4 copies (mirror, rot90, rot180, transpose) whose reading equals the original's exactly, for bases whose sides are both multiples of 16 and for the others. G0 is XRoute's DCT word; the rest are SI cells.
+
+| canvas | pairs | G0 word | runs | tone | pal | shape | sil | kpgeo |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| both sides multiples of 16 | 56 | 100% | 100% | 100% | 100% | 100% | 100% | 39% |
+| other sizes | 640 | 100% | 100% | 100% | 100% | 100% | 100% | 58% |
+scored 3062 queries × 4000 distractors in 0.4 s
+
+## Recall against reduction (comparator-42 Copy pairs of the eval bases, both orders: 3062 queries)
+
+Pairs per transform: mirror 86, rot90 86, rot180 86, transpose 86, invert 7, recolour 85, chswap 86, palshuffle 1, up2 86, up3 86, down70 82, resample90 85, up150 86, crop80 86, crop67 83, corner50 80, paste 77, shift1 86, dither 86, matte 85,
+
+| design | pool | reduction | recall | symmetries | integer rescale | recolour | resample | crop | paste | edits |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| proposal: shape ∧ pal ∧ runs, own cell only | 0.000% | 6124000× | 36.8% | 100% | 100% | 17% | 0% | 0% | 0% | 7% |
+| proposal: shape ∧ pal ∧ runs, multi-probe | 0.001% | 83890× | 43.0% | 100% | 100% | 36% | 3% | 0% | 0% | 27% |
+| proposal: all six quantised families, own cell | 0.000% | ∞ | 23.8% | 53% | 100% | 2% | 0% | 0% | 0% | 2% |
+| proposal: all six, multi-probe | 0.000% | ∞ | 35.9% | 85% | 100% | 16% | 1% | 0% | 0% | 21% |
+| votes: ≥ 2 of 8 families agree | 1.087% | 92× | 85.1% | 100% | 100% | 99% | 78% | 59% | 14% | 98% |
+| votes: ≥ 3 of 8 | 0.064% | 1568× | 73.8% | 100% | 100% | 97% | 48% | 34% | 2% | 91% |
+| votes: ≥ 4 of 8 | 0.002% | 40289× | 60.6% | 100% | 100% | 84% | 14% | 14% | 0% | 75% |
+| SI score ≥ -23 | 2.189% | 46× | 87.6% | 100% | 100% | 99% | 79% | 67% | 35% | 99% |
+| SI score ≥ -3 | 1.180% | 85× | 85.3% | 100% | 100% | 99% | 72% | 62% | 34% | 97% |
+| SI score ≥ 1 (the profile's default) | 0.914% | 109× | 85.2% | 100% | 100% | 99% | 72% | 62% | 33% | 97% |
+| SI score ≥ 21 | 0.515% | 194× | 83.2% | 100% | 100% | 99% | 64% | 59% | 27% | 97% |
+| SI score ≥ 52 | 0.241% | 415× | 79.1% | 100% | 100% | 99% | 53% | 52% | 14% | 94% |
+| SI score ≥ 64 | 0.127% | 788× | 77.9% | 100% | 100% | 99% | 49% | 51% | 14% | 92% |
+
+## The funnel: SI ∪ the exact-key index, then XRank
+
+xprepared 5617 sides in 3.2 s
+Keys: top 32 by Σ 1/df per key family (codes, bands; df cap 256) as `docs/SEARCH.md`. SI: score ≥ 1, budget 2000. Eval population 4000 distractors.
+
+| | candidates per query | recall |
+|---|---:|---:|
+| exact keys alone | 60.9 | 98.8% |
+| SI alone | 36.5 | 85.2% |
+| SI ∪ keys | 96.8 | 99.6% |
+| SI ∪ keys → XRank says Copy | 96.8 | 99.6% of 3062 |
+
+Copies XRank found among the distractors it was shown: 0 (comparator 42 calls 0 of them Copy too). XRank per query: p50 16.0 ms, p95 28.2 ms; key nomination p50 2910 µs (in-memory sorted arrays).
+XRank cost per candidate, per query: p50 228 µs, mean 223 µs, p95 332 µs; it compared 39.9% of the candidates it was shown (the rest stopped at the route and anchor-tier screen).
+XRank on the pools without their target (every sixth query, 50618 candidates): 176 µs per candidate.
+
+| transform | pairs | keys | SI | SI ∪ keys | → XRank Copy |
+|---|---:|---:|---:|---:|---:|
+| mirror | 86 | 100% | 100% | 100% | 100% |
+| rot90 | 86 | 100% | 100% | 100% | 100% |
+| rot180 | 86 | 100% | 100% | 100% | 100% |
+| transpose | 86 | 100% | 100% | 100% | 100% |
+| invert | 7 | 100% | 100% | 100% | 100% |
+| recolour | 85 | 100% | 99% | 100% | 100% |
+| chswap | 86 | 100% | 100% | 100% | 100% |
+| palshuffle | 1 | 100% | 100% | 100% | 100% |
+| up2 | 86 | 100% | 100% | 100% | 100% |
+| up3 | 86 | 100% | 100% | 100% | 100% |
+| down70 | 82 | 90% | 32% | 93% | 93% |
+| resample90 | 85 | 100% | 84% | 100% | 100% |
+| up150 | 86 | 88% | 97% | 100% | 100% |
+| crop80 | 86 | 100% | 96% | 100% | 100% |
+| crop67 | 83 | 100% | 70% | 100% | 100% |
+| corner50 | 80 | 100% | 16% | 100% | 100% |
+| paste | 77 | 100% | 33% | 100% | 100% |
+| shift1 | 86 | 100% | 100% | 100% | 100% |
+| dither | 86 | 100% | 94% | 100% | 100% |
+| matte | 85 | 100% | 99% | 100% | 100% |
+
+## The index itself
+
+Index over 4000 works: 182111 posting entries (45.5 per work). Query build p50 446 µs; index query p50 4 µs, p95 27 µs, 517 postings read per query; signature from a parsed side 195 µs, from the wires (parse included) 199 µs per work.
+Index admissions equal the reference scan on 3062 of 3062 queries.
+
+$ sibench eval     # the synthetic corpus
+corpus: 10520 works (120 bases × 21 variants, 8000 distractors) opened and judged in 2.5 s
+PAPH-SI evaluation — profile SI4-PROVISIONAL (aa8ce6d311f4ce56), X X3-PROVISIONAL — 10520 works, eval population 4000 distractors
+
+## Cells: how the eval population spreads (fine 256 / coarse 16)
+
+| family | present | occupied fine | effective fine cells | largest fine cell | effective coarse cells | P(random pair shares a fine cell) |
+|---|---:|---:|---:|---:|---:|---:|
+| runs | 100% | 82 | 13 | 38.1% | 5.5 | 1/6 |
+| tone | 100% | 165 | 27 | 17.0% | 8.5 | 1/12 |
+| pal | 100% | 24 | 7 | 28.7% | 3.0 | 1/6 |
+| shape | 100% | 103 | 19 | 25.2% | 4.8 | 1/10 |
+| sil | 75% | 206 | 103 | 5.4% | 12.5 | 1/59 |
+| kpgeo | 65% | 178 | 47 | 16.6% | 8.7 | 1/20 |
+
+## Stability: where a copy lands relative to the query's probes (eval bases, every pair, both orders)
+
+Exact = the copy is in the query's own cell; probed = in one of its 4 probe cells. Random = a random eval distractor.
+
+| transform | runs | tone | pal | shape | sil | kpgeo | local | band |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| mirror | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 50 / 88 | 100 | 82 |
+| rot90 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 54 / 91 | 100 | 86 |
+| rot180 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 50 / 93 | 100 | 86 |
+| transpose | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 | 100 |
+| invert | 100 / 100 | 80 / 86 | 93 / 95 | 70 / 83 | 100 / 100 | 90 / 98 | 8 | 3 |
+| recolour | 80 / 82 | 61 / 68 | 59 / 73 | 73 / 90 | 71 / 77 | 37 / 57 | 80 | 63 |
+| chswap | 100 / 100 | 48 / 56 | 95 / 98 | 79 / 90 | 100 / 100 | 48 / 66 | 66 | 45 |
+| palshuffle | 88 / 88 | 20 / 29 | 95 / 98 | 50 / 77 | 97 / 97 | 30 / 57 | 18 | 7 |
+| up2 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 | 100 |
+| up3 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 | 100 |
+| down70 | 43 / 50 | 25 / 33 | 12 / 22 | 27 / 48 | 32 / 57 | 17 / 24 | 2 | 0 |
+| resample90 | 70 / 86 | 27 / 37 | 16 / 32 | 45 / 56 | 46 / 59 | 18 / 34 | 6 | 0 |
+| up150 | 11 / 12 | 55 / 66 | 71 / 98 | 34 / 65 | 70 / 85 | 7 / 28 | 8 | 0 |
+| crop80 | 73 / 89 | 46 / 56 | 43 / 80 | 36 / 71 | 21 / 41 | 28 / 40 | 80 | 56 |
+| crop67 | 70 / 84 | 18 / 21 | 23 / 65 | 25 / 56 | 13 / 23 | 23 / 32 | 61 | 27 |
+| corner50 | 46 / 59 | 12 / 19 | 20 / 61 | 20 / 38 | 6 / 9 | 0 / 6 | 26 | 0 |
+| paste | 34 / 41 | 5 / 11 | 12 / 29 | 7 / 22 | 8 / 10 | 7 / 14 | 25 | 7 |
+| shift1 | 96 / 100 | 88 / 94 | 96 / 96 | 70 / 89 | 62 / 80 | 61 / 95 | 100 | 86 |
+| dither | 25 / 29 | 23 / 35 | 46 / 75 | 38 / 63 | 65 / 68 | 8 / 33 | 4 | 4 |
+| matte | 68 / 80 | 62 / 70 | 70 / 93 | 66 / 74 | 56 / 62 | 31 / 64 | 92 | 76 |
+| *random pair* | 15.8 / 22.5 | 7.2 / 11.2 | 16.1 / 40.7 | 10.6 / 22.3 | 1.6 / 3.2 | 4.5 / 9.9 | 1.64 | 0.48 |
+
+Quantised families: % exact / % probed. MinHash families: % with at least one equal band key.
+
+## What a coarse-only match is worth (the note's 16-cell level)
+
+A candidate outside the query's 4 probe cells but inside its coarse cell, against one in neither: share of comparator-42 Copy pairs and of random pairs, and 16 × the log-likelihood ratio.
+
+| family | copy: probed | copy: coarse only | copy: neither | random: probed | random: coarse only | random: neither | weight of coarse only | weight of neither |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| runs | 92.9% | 0.5% | 6.6% | 26.8% | 1.5% | 71.6% | -17 | -38 |
+| tone | 77.6% | 0.8% | 21.6% | 10.2% | 2.4% | 87.4% | -16 | -22 |
+| pal | 88.7% | 0.7% | 10.6% | 34.9% | 4.7% | 60.4% | -29 | -28 |
+| shape | 87.7% | 3.4% | 8.8% | 20.4% | 9.2% | 70.4% | -16 | -33 |
+| sil | 87.5% | 2.0% | 10.5% | 3.2% | 5.6% | 91.1% | -15 | -34 |
+| kpgeo | 76.5% | 5.6% | 17.9% | 10.5% | 4.9% | 84.6% | +2 | -25 |
+
+## Sampling grids and the square's symmetries (every base, both splits)
+
+Share of D4 copies (mirror, rot90, rot180, transpose) whose reading equals the original's exactly, for bases whose sides are both multiples of 16 and for the others. G0 is XRoute's DCT word; the rest are SI cells.
+
+| canvas | pairs | G0 word | runs | tone | pal | shape | sil | kpgeo |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| both sides multiples of 16 | 180 | 100% | 100% | 100% | 100% | 100% | 100% | 65% |
+| other sizes | 300 | 100% | 100% | 100% | 100% | 100% | 100% | 67% |
+scored 848 queries × 4000 distractors in 0.1 s
+
+## Recall against reduction (comparator-42 Copy pairs of the eval bases, both orders: 848 queries)
+
+Pairs per transform: mirror 39, rot90 28, rot180 39, transpose 31, invert 3, recolour 32, chswap 30, palshuffle 6, up2 40, up3 40, down70 0, resample90 6, up150 2, crop80 20, crop67 13, corner50 1, paste 19, shift1 36, dither 9, matte 30,
+
+| design | pool | reduction | recall | symmetries | integer rescale | recolour | resample | crop | paste | edits |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| proposal: shape ∧ pal ∧ runs, own cell only | 0.476% | 210× | 71.0% | 100% | 100% | 61% | 25% | 3% | 0% | 51% |
+| proposal: shape ∧ pal ∧ runs, multi-probe | 3.854% | 26× | 79.2% | 100% | 100% | 77% | 50% | 34% | 3% | 65% |
+| proposal: all six quantised families, own cell | 0.009% | 11344× | 50.0% | 71% | 100% | 24% | 0% | 0% | 0% | 24% |
+| proposal: all six, multi-probe | 0.133% | 753× | 65.4% | 95% | 100% | 42% | 0% | 4% | 0% | 48% |
+| votes: ≥ 2 of 8 families agree | 30.151% | 3× | 96.9% | 100% | 100% | 98% | 100% | 97% | 55% | 97% |
+| votes: ≥ 3 of 8 | 9.562% | 10× | 93.6% | 100% | 100% | 94% | 81% | 90% | 29% | 94% |
+| votes: ≥ 4 of 8 | 1.719% | 58× | 86.3% | 100% | 100% | 80% | 50% | 63% | 11% | 87% |
+| SI score ≥ 1 (the profile's default) | 23.131% | 4× | 96.7% | 100% | 100% | 96% | 100% | 97% | 58% | 97% |
+| SI score ≥ 130 | 2.007% | 50× | 88.8% | 100% | 100% | 87% | 31% | 76% | 13% | 89% |
+| SI score ≥ 153 | 1.019% | 98× | 86.7% | 100% | 100% | 82% | 31% | 66% | 13% | 87% |
+| SI score ≥ 176 | 0.506% | 198× | 85.8% | 100% | 100% | 80% | 25% | 62% | 13% | 87% |
+| SI score ≥ 201 | 0.218% | 458× | 84.8% | 100% | 100% | 75% | 25% | 60% | 11% | 86% |
+| SI score ≥ 225 | 0.115% | 868× | 82.8% | 100% | 100% | 73% | 12% | 50% | 11% | 83% |
+
+## The funnel: SI ∪ the exact-key index, then XRank
+
+xprepared 4465 sides in 1.5 s
+Keys: top 32 by Σ 1/df per key family (codes, bands; df cap 256) as `docs/SEARCH.md`. SI: score ≥ 1, budget 2000. Eval population 4000 distractors.
+
+| | candidates per query | recall |
+|---|---:|---:|
+| exact keys alone | 58.0 | 98.1% |
+| SI alone | 925.2 | 96.7% |
+| SI ∪ keys | 951.8 | 100.0% |
+| SI ∪ keys → XRank says Copy | 951.8 | 100.0% of 848 |
+
+Copies XRank found among the distractors it was shown: 135 (comparator 42 calls 135 of them Copy too). XRank per query: p50 99.3 ms, p95 525.1 ms; key nomination p50 1524 µs (in-memory sorted arrays).
+XRank cost per candidate, per query: p50 93 µs, mean 275 µs, p95 1374 µs; it compared 16.5% of the candidates it was shown (the rest stopped at the route and anchor-tier screen).
+XRank on the pools without their target (every sixth query, 130969 candidates): 146 µs per candidate.
+By generator (query base → distractor): work → work: 120, scene → pixel-art: 15
+By backdrop (base → distractor; 0 transparent, 1 flat, 2 dithered gradient, −1 noise field): -1 → -1: 120, 2 → 2: 15
+
+| transform | pairs | keys | SI | SI ∪ keys | → XRank Copy |
+|---|---:|---:|---:|---:|---:|
+| mirror | 39 | 100% | 100% | 100% | 100% |
+| rot90 | 28 | 100% | 100% | 100% | 100% |
+| rot180 | 39 | 100% | 100% | 100% | 100% |
+| transpose | 31 | 100% | 100% | 100% | 100% |
+| invert | 3 | 100% | 100% | 100% | 100% |
+| recolour | 32 | 100% | 91% | 100% | 100% |
+| chswap | 30 | 93% | 100% | 100% | 100% |
+| palshuffle | 6 | 100% | 100% | 100% | 100% |
+| up2 | 40 | 100% | 100% | 100% | 100% |
+| up3 | 40 | 100% | 100% | 100% | 100% |
+| resample90 | 6 | 92% | 100% | 100% | 100% |
+| up150 | 2 | 25% | 100% | 100% | 100% |
+| crop80 | 20 | 100% | 100% | 100% | 100% |
+| crop67 | 13 | 85% | 92% | 100% | 100% |
+| corner50 | 1 | 50% | 100% | 100% | 100% |
+| paste | 19 | 100% | 58% | 100% | 100% |
+| shift1 | 36 | 100% | 100% | 100% | 100% |
+| dither | 9 | 83% | 78% | 100% | 100% |
+| matte | 30 | 100% | 100% | 100% | 100% |
+
+## The index itself
+
+Index over 4000 works: 182111 posting entries (45.5 per work). Query build p50 79 µs; index query p50 46 µs, p95 92 µs, 4005 postings read per query; signature from a parsed side 93 µs, from the wires (parse included) 99 µs per work.
+Index admissions equal the reference scan on 848 of 848 queries.
+
+$ sha256sum target/si-corpus/chain.bin target/si-corpus/chain.bin.bases.tsv /tmp/SI4-refit.psi ../docs/calibration/SI4-PROVISIONAL.psi
+5bb444bb118c4d5c1562f30cba5d6bb35f6a460970f73b9aa7144184257e7e62  target/si-corpus/chain.bin
+ada27caaa20fd116cb25ef18ec0cc5664f5586f189052d120d8893eb52142820  target/si-corpus/chain.bin.bases.tsv
+aa8ce6d311f4ce56e4636d7b0a30d892877d76ca0821d9563656c58b75cb033d  /tmp/SI4-refit.psi
+aa8ce6d311f4ce56e4636d7b0a30d892877d76ca0821d9563656c58b75cb033d  ../docs/calibration/SI4-PROVISIONAL.psi
+
+$ sibench fit --x2 --corpus corpus-w3.bin --out /tmp/SI2-refit.psi     # 1.1.1's synthetic fit, on the synthetic corpus hashed in wire 3
+note: target/si-corpus/corpus-w3.bin holds wire-3 hashes, and this release writes wire 4: its measurements are of wire 3's sections (delete the file, or `sibench corpus` again, for this release's)
+corpus: 10520 works (120 bases × 21 variants, 8000 distractors) opened and judged in 2.5 s
+fitted SI2-PROVISIONAL on 4000 background works, 2432 noise pairs, 1958 evidence pairs in 0.06 s
+  5334 bytes, id abfef6f814c4915bcb7df273330cbd01c1fa9f90bf24b30bf8034f0a473074b6  → /tmp/SI2-refit.psi
+  probes 4  threshold 2  budget 2000
+  | family | weights none / near / exact | axis noise σ (projection units) |
+  | runs | -27 / 22 / 62 | [17705, 16143, 10123, 9103] |
+  | tone | -21 / 29 / 70 | [9139, 12194, 13997, 10064] |
+  | pal | -22 / 17 / 66 | [13835, 7882, 6153, 6983] |
+  | shape | -23 / 33 / 65 | [17801, 16216, 17046, 12065] |
+  | sil | -34 / 26 / 66 | [26709, 13396, 15634, 11953] |
+  | kpgeo | -17 / 42 / 69 | [10950, 11226, 11488, 8818] |
+  | local | [-20, 23, 64, 140] (0 / 1 / 2–3 / ≥4 equal band keys) | |
+  | band | [-13, 57, 107, 185] | |
+
+$ sibench fit --x1 --corpus corpus-w3.bin --out /tmp/SI1-refit.psi
+note: target/si-corpus/corpus-w3.bin holds wire-3 hashes, and this release writes wire 4: its measurements are of wire 3's sections (delete the file, or `sibench corpus` again, for this release's)
+corpus: 10520 works (120 bases × 21 variants, 8000 distractors) opened and judged in 2.5 s
+fitted SI1-PROVISIONAL on 4000 background works, 2432 noise pairs, 1958 evidence pairs in 0.06 s
+  5334 bytes, id ca0ff1047b03cadd7a974ac652ca3bc73618b0f6660f5cd13411398fa3484d3e  → /tmp/SI1-refit.psi
+  probes 4  threshold 2  budget 2000
+  | family | weights none / near / exact | axis noise σ (projection units) |
+  | runs | -27 / 22 / 62 | [17705, 16143, 10123, 9103] |
+  | tone | -21 / 29 / 70 | [9139, 12194, 13997, 10064] |
+  | pal | -22 / 17 / 66 | [13835, 7882, 6153, 6983] |
+  | shape | -23 / 33 / 65 | [17801, 16216, 17046, 12065] |
+  | sil | -34 / 26 / 66 | [26709, 13396, 15634, 11953] |
+  | kpgeo | -17 / 42 / 69 | [10950, 11226, 11488, 8818] |
+  | local | [-20, 23, 64, 140] (0 / 1 / 2–3 / ≥4 equal band keys) | |
+  | band | [-13, 57, 107, 185] | |
+
+$ sibench chainfit --x2 --corpus chain-w3.bin --name SI3-PROVISIONAL --out /tmp/SI3-refit.psi     # 1.1.2's fit, on its wire-3 hashes
+note: target/si-corpus/chain-w3.bin holds wire-3 hashes, and this release writes wire 4: its measurements are of wire 3's sections (delete the file, or `sibench corpus` again, for this release's)
+corpus: 11654 works (174 bases × 21 variants, 8000 distractors) opened and judged in 8.6 s
+PAPH-SI fitted on the chain's works — 174 real bases (88 and 86 in the two folds), 2 pairs of distinct originals comparator 42 calls Copy left out of the unrelated ones.
+
+| fitted on → measured on | profile | θ | copies admitted at θ | unrelated admitted at θ | at θ = 1: copies / unrelated | recall with 1% / 5% of unrelated admitted |
+|---|---|---:|---:|---:|---:|---:|
+| fold A → fold B | SI2 (synthetic) | 2 | 96.0% of 3062 | 48.17% of 7310 | 96.3% / 52.00% | 72.1% (θ 192) / 80.4% (θ 142) |
+| fold A → fold B | chain fit | 1 | 85.7% of 3062 | 0.90% of 7310 | 85.7% / 0.90% | 85.7% (θ 1) / 85.7% (θ 1) |
+|  | (sil kept SI2's codebook: under 40 works in the fold carry it) | | | | |
+| fold B → fold A | SI2 (synthetic) | 2 | 94.6% of 3128 | 51.24% of 7654 | 95.2% / 54.95% | 70.6% (θ 209) / 79.0% (θ 144) |
+| fold B → fold A | chain fit | 1 | 85.7% of 3128 | 0.48% of 7654 | 85.7% / 0.48% | 85.7% (θ 1) / 85.7% (θ 1) |
+|  | (sil kept SI2's codebook: under 40 works in the fold carry it) | | | | |
+
+Copies admitted at each profile's own θ, both folds together, by transform:
+
+| transform | SI2 (synthetic) | chain fit |
+|---|---:|---:|
+| mirror | 100% of 348 | 100% of 348 |
+| rot90 | 100% of 346 | 100% of 346 |
+| rot180 | 100% of 346 | 100% of 346 |
+| transpose | 100% of 346 | 100% of 346 |
+| invert | 100% of 34 | 100% of 34 |
+| recolour | 99% of 344 | 99% of 344 |
+| chswap | 100% of 346 | 100% of 346 |
+| palshuffle | 100% of 2 | 100% of 2 |
+| up2 | 100% of 348 | 100% of 348 |
+| up3 | 100% of 348 | 100% of 348 |
+| down70 | 85% of 332 | 34% of 332 |
+| resample90 | 99% of 342 | 87% of 342 |
+| up150 | 99% of 346 | 97% of 346 |
+| crop80 | 100% of 346 | 99% of 346 |
+| crop67 | 95% of 338 | 69% of 338 |
+| corner50 | 72% of 326 | 22% of 326 |
+| paste | 63% of 314 | 32% of 314 |
+| shift1 | 100% of 348 | 100% of 348 |
+| dither | 99% of 346 | 92% of 346 |
+| matte | 99% of 344 | 99% of 344 |
+
+Per family, the share of copy queries / unrelated queries whose candidate reaches a probe level (%):
+
+| | | runs | tone | pal | shape | sil | kpgeo | local | band |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| fold A → fold B | SI2 (synthetic) | 80 / 43 | 85 / 42 | 97 / 79 | 82 / 40 | 8 / 0 | 77 / 25 | 70 / 0 | 51 / 2 |
+| fold A → fold B | chain fit | 64 / 6 | 68 / 3 | 74 / 3 | 53 / 2 | 8 / 0 | 54 / 2 | 70 / 0 | 51 / 2 |
+| fold B → fold A | SI2 (synthetic) | 78 / 40 | 86 / 44 | 96 / 72 | 82 / 46 | 5 / 0 | 76 / 28 | 70 / 0 | 50 / 1 |
+| fold B → fold A | chain fit | 65 / 6 | 65 / 2 | 74 / 4 | 53 / 2 | 5 / 0 | 53 / 2 | 70 / 0 | 50 / 1 |
+
+fitted SI3-PROVISIONAL on all 174 bases' originals (sil kept SI2's codebook): 5334 bytes, id dfe99f33b6a8dfc029471fc4c4e8d5f61c126d4cbc069d1cbacc43b43f49c270 → /tmp/SI3-refit.psi
+  probes 4  threshold 1  budget 2000
+  | family | weights none / near / exact | axis noise σ (projection units) |
+  | runs | -17 / 19 / 58 | [20278, 15359, 19742, 7881] |
+  | tone | -18 / 31 / 69 | [32705, 15164, 12183, 15682] |
+  | pal | -24 / 18 / 71 | [19780, 8131, 4505, 4575] |
+  | shape | -12 / 42 / 70 | [19503, 20997, 14034, 9086] |
+  | sil | -27 / 10 / 55 | [26709, 13396, 15634, 11953] |
+  | kpgeo | -15 / 45 / 69 | [15269, 10835, 14555, 10481] |
+  | local | [-17, 46, 154, 228] (0 / 1 / 2–3 / ≥4 equal band keys) | |
+  | band | [-10, 38, 121, 213] | |
+
+$ sha256sum /tmp/SI2-refit.psi ../docs/calibration/SI2-PROVISIONAL.psi /tmp/SI1-refit.psi ../docs/calibration/SI1-PROVISIONAL.psi /tmp/SI3-refit.psi ../docs/calibration/SI3-PROVISIONAL.psi
+abfef6f814c4915bcb7df273330cbd01c1fa9f90bf24b30bf8034f0a473074b6  /tmp/SI2-refit.psi
+abfef6f814c4915bcb7df273330cbd01c1fa9f90bf24b30bf8034f0a473074b6  ../docs/calibration/SI2-PROVISIONAL.psi
+ca0ff1047b03cadd7a974ac652ca3bc73618b0f6660f5cd13411398fa3484d3e  /tmp/SI1-refit.psi
+ca0ff1047b03cadd7a974ac652ca3bc73618b0f6660f5cd13411398fa3484d3e  ../docs/calibration/SI1-PROVISIONAL.psi
+dfe99f33b6a8dfc029471fc4c4e8d5f61c126d4cbc069d1cbacc43b43f49c270  /tmp/SI3-refit.psi
+dfe99f33b6a8dfc029471fc4c4e8d5f61c126d4cbc069d1cbacc43b43f49c270  ../docs/calibration/SI3-PROVISIONAL.psi

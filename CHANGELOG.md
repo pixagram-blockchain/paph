@@ -1,5 +1,136 @@
 # Changelog
 
+## 1.2.0 — 2026-10-09 — wire 4, CAL-007, X3 and SI4: what 1.1.2 found and a patch could not change
+
+1.1.2 measured the engine on the Pixa chain's artworks and left three findings no 1.1.x release
+could act on: two of the route's words were not invariant on real canvases (a hasher change), the
+chain's `Suspected` rate (a calibration change), and XRank's cost on real pairs (a profile
+change). 1.2.0 makes all three, and refits PAPH-SI on what they change. **Every stored work is
+re-hashed**: a wire-3 side and a wire-4 side are never compared. Everything was measured on 1.1.2's
+snapshot of the chain (177 works, head block 987,642), re-hashed, and on the synthetic corpora;
+the runs are `docs/calibration/CAL-007-PROVISIONAL.log`, `X3-PROVISIONAL.log` and
+`SI4-PROVISIONAL.log`.
+
+**1. Wire 4: sampling that commutes with the square's symmetries**
+([docs/SPEC-W4-paph-wire4.md](docs/SPEC-W4-paph-wire4.md)). SPEC-003's layout and sizes, version
+byte 4, five things sampled differently (three fields re-encoded with them): closed cells for the
+16 × 16 thumbnail and the shapes grid; the DCT rounded once, half away from zero; shape regions
+ordered by keys no symmetry moves, the box's sides stored where wire 3 stored a rounded ratio;
+radial profiles cast from the exact centroid to the last step inside; the silhouette's moments, run
+counts and occupancy cells exact, its component chosen among equal areas by keys no symmetry moves
+(perimeter, box, profile, moments, occupancy — scan order only between twins), its box at bytes
+66–69. A mirrored or quarter-turned image's sections are now the original's, moved, on canvases of
+any size (`rust/src/wire4.rs`: 532 of 532 D4 copies; wire 3 moves on 493). On the chain's real bases
+the route's DCT word G0 equalled its original's on 25 % of D4 copies and the regions word G3 on 46 %
+(sides not multiples of 16): both are now 100 % of 696, as are PAPH-SI's SHAPE and TONE cells (SIL:
+100 % of the 68 copies that carry it). Comparator 42 certifies 995 of the synthetic corpus's 2,400
+transformed pairs (976 on wire 3) and 3,095 of the chain's 3,480 in both formats (the same total).
+Wire 3 is still written on request (`{ wire: 3 }`, `Config { wire: WIRE_3, .. }`) byte for byte —
+the 3,160-case equivalence digest is unchanged natively and in both WebAssembly builds — beside a
+second digest for wire 4 (3,164 cases). New golden vectors, `docs/golden/GOLDEN-W4.json`, emitted by
+the reference and checked in the JavaScript engine and both WebAssembly builds by `npm test`.
+Hashing costs the same: 0.92–1.09× wire 3's time natively, 1.01–1.09× in WebAssembly.
+
+**2. CAL-007-PROVISIONAL: the chain's `Suspected`** (SPEC-004.2 §19). Under CAL-004 comparator 42
+read `Suspected` ("partial agreement": structure between the moderate bar, 2400, and the strong one,
+no geometry) on 222 of the chain's 14,412 pairs of two authors' works on wire 4 (1.1.2, on wire 3:
+191) and `Copy` on none. CAL-007 is CAL-004 with that one bar at 3300 — the next multiple of 100
+above the highest certifiable cross-author structure on the chain (3232) — and nothing else: no
+`Copy` arm reads it, so no Copy moves, and pairs only move down, `Suspected → Related`, on wire 4:
+222 → 0 between authors, 37 → 0 within one author's works (1.1.2: 191 and 34); 88 of the chain's
+3,480 transformed copies (74 of them palette shuffles) and 175 of the synthetic 2,400; synthetic
+negatives 140 → 74 `Suspected`, `Copy` 3 → 3. `sibench calfit` refits the bar and writes the
+artefact (320 bytes, `741afad9252f2ccb…`; its name field reads `CAL-007-PROVISIO`, as CAL-001's
+does). CAL-004 stays loadable from its artefact.
+
+**3. X3-PROVISIONAL, and the expansion exit that was measured and not taken** (docs/PAPH-X.md §4,
+§6). 1.1.2 proposed an exit from XRank's anchor expansion once no corner of the lattice could reach
+Suspected. `sibench xtrace` followed every query tier by tier: on the 28,094 queries between two
+authors' works that reach the geometry no tier ever finds a model, so the exit would stop nearly
+all of them — but 156 of the real-base copy queries and 86 synthetic ones find their model only
+after the anchor tier (50 and 22 with no weak signal there either), and every exit rule measured
+puts copies at risk (122 at the anchor tier, 26 even after 256 rows). X3 is X2's schedule, bars,
+route derivation and door, bound to CAL-007 (332 bytes, `8af84dd0abb12192…`; only the name and the
+base identity differ from X2's bytes). The speed-up on real pairs is the calibration's: with the
+moderate bar higher, the copy-scope stop comes before the expensive channels (every structural
+channel computed exactly on 24 % of the queries, 1.1.2: 63 %), and XRank costs 648 µs a query over
+the chain's pairs against 717 under X2 and 1,100 for comparator 42's gated `rank` (1.7×; xtime,
+X2's schedule under each calibration: 722 → 642 µs). XRank reads Copy on all 6,190 real-base and
+1,990 synthetic copy queries, and on none of the 31,148 chain queries comparator 42 does not call
+Copy. X2 and X1 load from their artefacts with CAL-004 (`xprofile({ base: cal004, x })`).
+
+**A cascade fix the measurements found.** The first run of X3 lost two synthetic copy queries: a
+pasted copy comparator 42 certifies on geometry alone, both arrival orders, read `NotCopy`, `FAST`.
+On the sparse pools the GN control saturated (evidence 0), and with the structural upper bound
+under CAL-007's moderate bar every corner read below Suspected, so the copy-scope stop skipped the
+deferral the cascade takes for a saturated control; under CAL-004 the lattice stayed open and the
+pair deferred. The deferral now covers the copy-scope stop — geometry at its potential lifting a
+corner to Suspected after a saturated control falls back to EXACT42, under every profile — and both
+queries read Copy. X2 loses none (`lost --x2`, both corpora), and X3's states on all the chain's
+queries are as they were. A test pins the behaviour on a constructed pair, and the X3 log prints
+the real one through `xcli`.
+
+**4. SI4-PROVISIONAL** (SPEC-SI §9.8). SI3's fit (`sibench chainfit`) re-run on the chain's works
+hashed in wire 4, bound to X3: 5,334 bytes, `aa8ce6d311f4ce56…`, reproduced byte for byte. Held out,
+it keeps 85.0 % of copies at 0.93 % / 0.51 % of unrelated real pairs (SI3 on wire 3: 85.7 % at
+0.90 % / 0.48 %); between the chain's distinct works it admits 0.40 % of the queries (SI3 on the
+same wire-4 works: 0.50 %); beside the exact keys it nominates 99.6 % of the real bases' copies
+(in-sample, as SI3), and XRank under X3 reads Copy on all of them. Out of distribution on synthetic
+art, as SI3 was (23.1 % admitted; SI3: 22.1 %). SI3, SI2 and SI1 stay as artefacts, and each still
+refits byte for byte from its wire-3 corpus.
+
+**Compatibility.**
+* **Re-hash every stored work.** The default format is 4; a wire-3 and a wire-4 side are refused
+  as a pair (`Indeterminate`, `WIRE_MISMATCH`; comparator 3: an error; `xrank`: that candidate's
+  record), Tier 2's keypoints are unchanged, so comparator 42's stage-1 screen still reads a mixed
+  pair. Until a store is re-hashed, hash queries in both formats and compare each stored side with
+  the query of its own format (Tier 1 byte 4 says which), or stay on wire 3 with `{ wire: 3 }`
+  (SPEC-W4 §9). `hash_profile_id` hashes the format byte (0x03 or 0x04) with the hash-time
+  fields, so a stored profile id changes with the format: the defaults' is `de456c49…` on wire 4,
+  `8b0af945…` (1.0–1.1's) on wire 3.
+* **Defaults change**: comparator 42 under CAL-007 (verdicts can move `Suspected → Related`, never
+  to or from `Copy`; reports name `CAL-007-PROVISIO`), PAPH-X under X3, PAPH-SI under SI4
+  (re-derive every signature from the re-hashed wires and swap the postings). The earlier
+  artefacts load as before.
+* **PAX1 sidecars are version 2**: a sidecar now records the side it was derived from — its Tier
+  1's checksum and format, and whether Tier 2 was read — and is refused by any other side, as by
+  another profile. Version 1 bound neither, so a store re-hashed in wire 4 could have handed a
+  wire-3 side's route to the same work's wire-4 side; 1.2 refuses version 1 outright. Re-derive
+  and store each side's sidecar once.
+* **Tier 1 parsing is stricter**, in every engine and both formats: a section-table count past
+  what its section holds is refused (the checksum covers the sections, not the table, and such a
+  wire sent readers past the section's end — the WebAssembly builds trapped), and on wire 4 a
+  counted shape record whose box side is outside 1–128. No wire the hasher writes is refused.
+* **ABI 4**: the flat configuration has 22 fields, the 22nd the wire format (3 or 4); a host that
+  passes a 21-field array must pass 22, or null for the defaults. X ABI 1 and SI ABI 1 do not move.
+  `paph_version()` returns 4.
+
+**Harness and tests.** `sibench` adds `calib` (calibration snapshots: every quantity comparator 42's
+lattice reads, per pair), `calfit`, `xtrace`, `xtime`, `wire` and `dump` (one synthetic work's
+wires, for `xcli`), and `corpus --wire 3`, which hashes 1.1's caches again byte for byte; `--x2`
+beside `--x1` everywhere; `chainfit` reads the chain's corpus and names its fit after the X profile
+(SI4 under X3, SI3 under `--x2`); and no fit is ever written over a committed artefact in
+`docs/calibration` with other bytes (`NOT WRITTEN`, exit 2). `rust/sibench.sh` re-hashes a cache
+written in another format and stops on a build failure. `tools/silhouette-ties.cjs` surveys the ties
+the silhouette's component choice can meet. `tools/cal-lattice.py` recomputes the lattice on the
+snapshots under candidate profiles (it reproduces CAL-004's recorded verdict on every row).
+`rust/bench.sh` and `npm run bench` time wire 3 beside wire 4 (the latter now warms the WebAssembly
+tiers up before timing); `xbench` and `test/x-bench.mjs` take `--x2`. Tests: `rust/src/wire4.rs`
+(exact equivariance over every block of the DCT hierarchy and the stored codes, the silhouette's
+ties, wire 3's failures, the tables, the refusals), the golden file, CAL-007, X3, SI4, the
+copy-scope fix, the sidecar's binding and the parser's limits (126 in all); `npm test` adds
+`test/wire4-golden.cjs` (140 checks, the tie canvases among them, no native binary needed); `npm run
+test:wire4` runs `test/wire4-parity.mjs` (1,275 checks: the JavaScript engine against the native
+reference on every image, its mirror and quarter and half turns, in both formats, and the refusal);
+`test:x` (3,466) and `test:si` (1,422) check the shipped profiles are X3 and SI4 byte for byte.
+
+**Documentation.** New: `docs/SPEC-W4-paph-wire4.md`. Updated: SPEC-004.2 (§19, CAL-007), SPEC-003
+(a note on format 4), `docs/PAPH-X.md` (header, §1, §2, §4's 1.2.0 subsection, §5, §6, §7),
+`docs/SPEC-SI-paph-si.md` (header, §0, §3, §6–§8, §9.8 new, §10, §11), `docs/SEARCH.md`,
+`docs/WASM-ABI.md` (ABI 4, the defaults, PAX1 version 2), `docs/PERFORMANCE.md`, the README, the
+integration's README (moving it to 1.2), the evidence bench's wire and calibration notes, and the
+glue's, types' and crate's doc comments.
+
 ## 1.1.2 — 2026-10-08 — the Pixa chain's artworks: PAPH-SI fitted on them, PAPH-X measured on them
 
 The wire (3), comparator 42, CAL-004-PROPOSED, X2-PROVISIONAL, ABI 3, X ABI 1 and SI ABI 1 do not
