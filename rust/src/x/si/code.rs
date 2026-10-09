@@ -403,10 +403,13 @@ mod tests {
         assert_eq!(fine(&[0, 1, 0, 0]), 4);
     }
 
-    /// The shipped profile on real wires: the signature taken from an X side
-    /// equals the one derived from the wires alone; copies under the
-    /// square's symmetries and an integer upscale clear the default
-    /// threshold against their original; unrelated works mostly do not.
+    /// The profiles on real wires: the signature taken from an X side equals
+    /// the one derived from the wires alone, and copies under the square's
+    /// symmetries and an integer upscale clear the default threshold against
+    /// their original — under SI2, fitted on this generator's kind of art,
+    /// and the shipped SI3, fitted on the chain's.  Unrelated works of this
+    /// generator mostly stay below SI2's threshold; SI3's population is real
+    /// art, on which it is measured instead (`sibench chainfit`).
     #[test]
     fn copies_score_and_unrelated_works_do_not() {
         use crate::config::Config;
@@ -414,7 +417,6 @@ mod tests {
         use crate::synth::{mirror, nearest_up, pixel_art, rot90, Img};
         use crate::wire::hash;
         use crate::x::{XBound, XPrepared};
-        let prof = SiProfile::shipped();
         let xb = XBound::shipped();
         let (cfg, rot) = (Config::default(), RotCache::new(&pattern()));
         let side = |im: &Img| -> XPrepared {
@@ -423,36 +425,40 @@ mod tests {
         };
         let bases: Vec<Img> = (0..10).map(|i| pixel_art(96 + 16 * (i % 4), 80 + 8 * (i % 3), 4242 + 31 * i as u64, 4 + i % 9, (i % 3) as u8)).collect();
         let xs: Vec<XPrepared> = bases.iter().map(&side).collect();
-        let (mut found, mut tried) = (0, 0);
-        for (i, b) in bases.iter().enumerate() {
-            let q = SiQuery::new(&xs[i].p, &xs[i].route, &prof);
-            assert_eq!(SiSig::from_prepared(&xs[i].p, &xb, &prof), q.sig, "wire-only signature = X-side signature");
-            for c in [mirror(b), rot90(b), nearest_up(b, 2)] {
-                let cx = side(&c);
-                let s = SiSig::build(&cx.p, &cx.route, &prof);
-                tried += 1;
-                if q.touches(&s) && q.score(&s) >= prof.threshold {
-                    found += 1;
-                }
-            }
-        }
-        assert!(found * 10 >= tried * 9, "copies admitted: {found} of {tried}");
-        let mut admitted = 0;
-        let mut pairs = 0;
-        for i in 0..xs.len() {
-            let q = SiQuery::new(&xs[i].p, &xs[i].route, &prof);
-            for j in 0..xs.len() {
-                if i != j {
-                    let s = SiSig::build(&xs[j].p, &xs[j].route, &prof);
-                    pairs += 1;
+        let copies: Vec<Vec<XPrepared>> = bases.iter().map(|b| [mirror(b), rot90(b), nearest_up(b, 2)].iter().map(&side).collect()).collect();
+        for (prof, unrelated_bound) in [(SiProfile::si2(), true), (SiProfile::shipped(), false)] {
+            let (mut found, mut tried) = (0, 0);
+            for i in 0..bases.len() {
+                let q = SiQuery::new(&xs[i].p, &xs[i].route, &prof);
+                assert_eq!(SiSig::from_prepared(&xs[i].p, &xb, &prof), q.sig, "wire-only signature = X-side signature");
+                for cx in copies[i].iter() {
+                    let s = SiSig::build(&cx.p, &cx.route, &prof);
+                    tried += 1;
                     if q.touches(&s) && q.score(&s) >= prof.threshold {
-                        admitted += 1;
+                        found += 1;
                     }
                 }
             }
+            assert!(found * 10 >= tried * 9, "{}: copies admitted: {found} of {tried}", prof.name_str());
+            let mut admitted = 0;
+            let mut pairs = 0;
+            for i in 0..xs.len() {
+                let q = SiQuery::new(&xs[i].p, &xs[i].route, &prof);
+                for j in 0..xs.len() {
+                    if i != j {
+                        let s = SiSig::build(&xs[j].p, &xs[j].route, &prof);
+                        pairs += 1;
+                        if q.touches(&s) && q.score(&s) >= prof.threshold {
+                            admitted += 1;
+                        }
+                    }
+                }
+            }
+            if unrelated_bound {
+                assert!(admitted * 10 <= pairs, "{}: unrelated admitted: {admitted} of {pairs}", prof.name_str());
+            }
+            println!("{}: copies {found}/{tried}, unrelated {admitted}/{pairs}", prof.name_str());
         }
-        assert!(admitted * 10 <= pairs, "unrelated admitted: {admitted} of {pairs}");
-        println!("copies {found}/{tried}, unrelated {admitted}/{pairs}");
     }
 
     #[test]

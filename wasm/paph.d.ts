@@ -441,8 +441,9 @@ export declare class Engine {
 
   /* ---- PAPH-SI ---- */
 
-  /** An SI profile from its artefact, or the shipped SI2-PROVISIONAL (bound to X2; SI1, bound to X1,
-   *  is docs/calibration/SI1-PROVISIONAL.psi). */
+  /** An SI profile from its artefact, or the shipped SI3-PROVISIONAL (bound to X2, fitted on the Pixa
+   *  chain's artworks; SI2, the synthetic fit bound to X2, and SI1, bound to X1, are
+   *  docs/calibration/SI2-PROVISIONAL.psi and SI1-PROVISIONAL.psi). */
   siprofile(bytes?: Uint8Array): SIProfile;
   /** The signature of a side: from an XSide (route reused) or from `{ t1, t2 }` alone (no bucket index). */
   sisig(side: XSideOrWires, o?: { profile?: SIProfile; xprofile?: XProfile }): SISignature;

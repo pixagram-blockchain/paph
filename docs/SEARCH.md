@@ -156,10 +156,17 @@ const rows = db.prepare(SI_SQL.query).all(...siSqlParams(q.plan()));   // [{ id,
 ```
 
 **Union it with the keys; never put one in front of the other.** Measured on comparator-42
-copies (SPEC-SI §9): keys alone 98.1 %, SI alone 91.9 %, their union 99.8 % at 4,000 works and
-98.8 % at 104,000 (97.0 % with SI's pool cut to its default budget of 2,000); in series (SI
-first) pasted copies drop to 13 %. Store the SI profile id with
-each row and re-derive signatures from the wires when it changes. In memory, `paph.siindex()`
+copies of the synthetic corpus (SPEC-SI §9, profile SI2): keys alone 98.1 %, SI alone 91.9 %,
+their union 99.8 % at 4,000 works and 98.8 % at 104,000 (97.0 % with SI's pool cut to its
+default budget of 2,000); in series (SI first) pasted copies drop to 13 %. On copies of the Pixa
+chain's own works (SPEC-SI §9.7), under the shipped profile SI3: keys alone 98.8 %, SI3 alone
+85.5 %, their union 99.6 % — in-sample for SI3, which was fitted on those works. SI2, fitted on
+synthetic art, admitted half of all pairs of real works there; the chain's fit, measured on
+works it was not fitted on, admits under 1 % of them.
+
+Store the SI profile id with each row and re-derive signatures from the wires when it changes —
+1.1.2 changes the shipped profile from SI2 to SI3, so an index built under 1.1.1 is re-derived
+(or keeps SI2 by loading `docs/calibration/SI2-PROVISIONAL.psi`). In memory, `paph.siindex()`
 answers the same query without SQL.
 
 ## 4. Verify
@@ -175,15 +182,17 @@ const hits = paph.rank(q, sides, { gate: true });   // one call, lean readings
 and comparator 42 on the ones it passes (`state: -1` = unscreened, never compared). A screened
 pair costs ~1–5 ms in WebAssembly; a nominated set of a few dozen is ~50–200 ms.
 
-**The gate drops copies.** The stage-1 screen passes a pair on keypoint correspondences alone —
-at least `geo_min_corr` (8) of them, and a pair never has more than its smaller side has
-keypoints — while comparator 42 also certifies copies on their structure. On the PAPH-SI corpus
-the gate screens out 178 of the 976 pairs comparator 42 calls Copy: 164 because one side has
-fewer than 8 keypoints, the rest because too few of their correspondences survive (`sibench
-lost`; [PAPH-X.md](PAPH-X.md) §6). Rank with `gate: false`
-(every nominated candidate is compared), or verify with XRank: it does not gate a candidate
-its route signature puts in the Fast class (172 of those 178), and under its shipped profile X2 it
-asks the structural channels before dropping any other:
+**The gate drops copies.** The stage-1 screen passes a pair on keypoint correspondences alone — at
+least `geo_min_corr` (8) of them, and a pair never has more than its smaller side has keypoints —
+while comparator 42 also certifies copies on their structure. On the PAPH-SI corpus the gate
+screens out 178 of the 976 pairs comparator 42 calls Copy: 164 because one side has fewer than 8
+keypoints, the rest because too few of their correspondences survive (`sibench lost`;
+[PAPH-X.md](PAPH-X.md) §6). Pixagram's works rarely have so few keypoints — one artwork of 177 on
+the chain — and on copies of the chain's works the gate screens out 8 of 3,095, 4 of them for
+keypoints: rare there, not zero. Rank with `gate: false` (every nominated candidate is compared),
+or verify with XRank: it does not gate a candidate its route signature puts in the Fast class (172
+of those 178), and under its shipped profile X2 it asks the structural channels before dropping any
+other:
 
 ```js
 const xq = paph.xprepare(query.t1, query.t2, { strict: true });
@@ -191,8 +200,10 @@ const xhits = paph.xrank(xq, rows.map(r => paph.xprepare(r.t1, r.t2)));   // cop
 // xhits[i]: { state, verdict, certifiable, inliers, geometryEvidence, structuralLo, structuralHi, … }
 ```
 
-XRank reads Copy on all 976 of those copies, in both arrival orders, at 0.2–0.6 ms a nominated
-candidate natively (SPEC-SI §9.3); under copy scope a pair the lattice cannot lift above `Related` reads
+XRank reads Copy on all 976 of those copies and on all 3,095 of the chain's, in both arrival
+orders, at 0.2–0.6 ms a nominated candidate natively on the synthetic corpus (SPEC-SI §9.3) and
+0.79 ms a candidate over the chain's pairs, where this gated `rank` costs 1.22 ms
+([PAPH-X.md](PAPH-X.md) §4); under copy scope a pair the lattice cannot lift above `Related` reads
 `NotCopy` (state 6) instead of a full state, and `state: -1` is a candidate the screen rejected.
 Store each side's `sidecar()` beside its wires and pass it back
 (`xprepare(t1, t2, { sidecar })`) to skip the derivation at query time.
@@ -206,6 +217,11 @@ What to keep:
 | `Suspected` | real shared structure, not enough to certify | review queue |
 | `Related` | shares style or assets | usually drop |
 | `Unrelated` / `Indeterminate` | — / the comparator abstains | drop |
+
+On the chain's works comparator 42 reads `Suspected` ("partial agreement") on 1.3 % of the pairs
+of two authors' works and `Copy` on none of them (SPEC-SI §11): a review queue fed with
+`Suspected` grows with the number of pairs, so alert on `Copy`, and treat `Suspected` as a
+reviewer's lead.
 
 `certifiable` says the comparator stands behind its verdict (enough evidence either way).
 When someone needs the why, `paph.compare(a, b, { json: true })` returns the full report —
@@ -262,8 +278,9 @@ candidate. One SQLite database of 10 GB (a Cloudflare Durable Object's limit) ho
 PAPH-SI adds 104 bytes and ≤ 54 postings per work (≈ 45 on average) and one statement per query
 reading ≈ 0.19 postings per stored work. At millions of works the cost that decides latency is
 XRank on the nominated candidates — 0.20 ms each for the median query, 0.62 ms on average for
-the negatives (native, X2), because nominated candidates are the works that look most like the
-query; see SPEC-SI §9.5 for the budget arithmetic.
+the negatives (native, X2, synthetic corpus), because nominated candidates are the works that
+look most like the query; 0.79 ms a candidate over the chain's real pairs, where the chain's SI
+fit nominates under 1 % of the population. See SPEC-SI §9.5 for the budget arithmetic.
 
 ## 7. Operations
 

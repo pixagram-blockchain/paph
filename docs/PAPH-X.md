@@ -1,20 +1,21 @@
 # PAPH-X — implementation record
 
 PAPH-X is the retrieval-native comparison cascade specified in
-[SPEC-X-paph-x.md](SPEC-X-paph-x.md): the same wires (format 3), the same comparator-42
-verdict vocabulary and calibration (CAL-004-PROPOSED), reached through a cheaper path — a
-128-byte route signature screened first, descriptor matching by locality-sensitive buckets
-instead of the 512 × 512 Hamming scan, geometry on a 96-keypoint anchor tier that expands only
-when it must, structural channels computed only while the verdict lattice can still move, and
-the exact comparator (`EXACT42`) as the fallback and the audit. This document is what was built,
-how it departs from the specification where it does, what it measures, and which of the
-specification's release gates it meets. Every number here was printed by `rust/target/release/xbench`
-or `node test/x-bench.mjs` on this machine (one core of a 2.1 GHz Xeon, shared), as §41.7 asks;
-none of them is a claim beyond that.
+[SPEC-X-paph-x.md](SPEC-X-paph-x.md): the same wires (format 3), the same comparator-42 verdict
+vocabulary and calibration (CAL-004-PROPOSED), reached through a cheaper path — a 128-byte route
+signature screened first, descriptor matching by locality-sensitive buckets instead of the 512 ×
+512 Hamming scan, geometry on a 96-keypoint anchor tier that expands only when it must, structural
+channels computed only while the verdict lattice can still move, and the exact comparator
+(`EXACT42`) as the fallback and the audit. This document is what was built, how it departs from the
+specification where it does, what it measures, and which of the specification's release gates it
+meets. Every number here was printed by `rust/target/release/xbench`, `rust/target/release/sibench`
+or `node test/x-bench.mjs` on this machine (one core of a 2.1 GHz Xeon, shared), as §41.7 asks,
+except two callgrind profiles that say so; none of them is a claim beyond that.
 
-Status: milestones M1–M7 of §40 are built, tested and verified across the native engine and
-both WebAssembly builds. M8 (calibration) is done on synthetic corpora only. Two profiles, both
-bound to CAL-004-PROPOSED (`91b545f801f5a095…`):
+Status: milestones M1–M7 of §40 are built, tested and verified across the native engine and both
+WebAssembly builds. M8 (calibration) is done on synthetic corpora; 1.1.2 measured X2 on Pixagram's
+own works — the artworks Hivemind lists on the Pixa chain at one snapshot (§4, last subsection) —
+and changed nothing of it. Two profiles, both bound to CAL-004-PROPOSED (`91b545f801f5a095…`):
 
 * **X2-PROVISIONAL** (`27993afaaca76d11…`, 332 bytes) — the shipped default from 1.1.1. It is X1
   with three changes and the same bars: route derivation 2 (§2), the structural door on every
@@ -23,8 +24,9 @@ bound to CAL-004-PROPOSED (`91b545f801f5a095…`):
   (`docs/calibration/X1-PROVISIONAL.pxcl`; `--x1` in the harnesses). §4's main tables and §5 were
   measured under it.
 
-No real moderation corpus has been added, so both keep the PROVISIONAL name and the fast policy
-is not the default.
+The chain's 177 works are not a moderation corpus — comparator 42 finds two copy pairs among
+them, each within one author's works, and the rest of the copies measured are synthetic
+transforms — so both profiles keep the PROVISIONAL name and the fast policy is not the default.
 
 ## 1. What the cascade does
 
@@ -154,31 +156,32 @@ pixel grid, and on 185 of 260 above. The route reads G0 and G2 as overlaps and G
 symbol agreement, so it tolerates what remains; an exactly invariant G0 needs symmetric
 sampling in the hasher, which changes the wire.
 
-**The structural door (X2).** X1's screen dropped a pair on the route class and the anchor
-pools: a route hard negative with at most `defer_pool_max` correspondences was `Reject` in
-`xscreen`, `Unrelated` under the fast policy and gated out of XRank, and XRank also gated out
-every candidate whose pools stayed below `geo_min_corr` through the expansion tiers. The anchor
-tier counts keypoint correspondences, and a work with almost no keypoints gives it none; XRank
-keeps a copy of such a work when its route reads the pair as Fast, which it does not gate, and a
-recolour can move the route out of that class while comparator 42 still certifies the copy on
-structure alone. On the PAPH-SI corpus three such copies were lost (6 of 1,952 queries): two
-channel swaps and a palette shuffle of works with 0–3 keypoints a side, two at the first exit
-(route Reject) and one at the second (route Defer) (`sibench lost --x1`). Under X2 none of those
-exits drops a pair until the structural door has shut, and the door keeps the first two; route
-derivation 2 reads the third as Fast (`sibench lost`). The door asks the structural channels, in
-a near-cheapest order, until the upper bound of the weighted structural score — unknown channels
-at their maximum, the local channel at its edge-set bound — falls below the bar of the lattice's
-recolour arm (the larger of the strong and the solo bars: 6000 under CAL-004), or the pair is
-not certifiable at all (the local channel not measurable, fewer than three secondaries). The
-exits already read thin anchor pools as the geometric arms being out of reach, as X1 did; the
-door answers for the one arm that needs no geometry, and answers exactly: a pair whose door
-shuts cannot be a structure-only Copy, on any corpus, and one whose door stays open is compared.
-Its order — runs, silhouette, the local bound, topology, shape, DCT, palette — costs 20.6 µs per
-certifiable unrelated pair of the corpus, within 0.1 µs of the cheapest of all 5,040 orders and
-against 28.4 µs in the cascade's own (`sibench doorprof`); over all 3,360 unrelated pairs — 500
-of them shut before any channel — it costs 17 µs a pair natively, and it shut on every one. The
-route bars stay X1's: keeping every copy out of the Reject class would have taken bars of
-1 / 3 / 164, which leave 55 % of unrelated pairs in the class instead of 93 %, and the class is
+**The structural door (X2).** X1's screen dropped a pair on the route class and the anchor pools: a
+route hard negative with at most `defer_pool_max` correspondences was `Reject` in `xscreen`,
+`Unrelated` under the fast policy and gated out of XRank, and XRank also gated out every candidate
+whose pools stayed below `geo_min_corr` through the expansion tiers. The anchor tier counts
+keypoint correspondences, and a work with almost no keypoints gives it none; XRank keeps a copy of
+such a work when its route reads the pair as Fast, which it does not gate, and a recolour can move
+the route out of that class while comparator 42 still certifies the copy on structure alone. On the
+PAPH-SI corpus three such copies were lost (6 of 1,952 queries): two channel swaps and a palette
+shuffle of works with 0–3 keypoints a side, two at the first exit (route Reject) and one at the
+second (route Defer) (`sibench lost --x1`). Under X2 none of those exits drops a pair until the
+structural door has shut, and the door keeps the first two; route derivation 2 reads the third as
+Fast (`sibench lost`). The door asks the structural channels, in a near-cheapest order, until the
+upper bound of the weighted structural score — unknown channels at their maximum, the local channel
+at its edge-set bound — falls below the bar of the lattice's recolour arm (the larger of the strong
+and the solo bars: 6000 under CAL-004), or the pair is not certifiable at all (the local channel
+not measurable, fewer than three secondaries). The exits already read thin anchor pools as the
+geometric arms being out of reach, as X1 did; the door answers for the one arm that needs no
+geometry, and answers exactly: a pair whose door shuts cannot be a structure-only Copy, on any
+corpus, and one whose door stays open is compared. Its order — runs, silhouette, the local bound,
+topology, shape, DCT, palette — costs 20.6 µs per certifiable unrelated pair of the corpus, within
+0.1 µs of the cheapest of all 5,040 orders and against 28.4 µs in the cascade's own
+(`sibench doorprof`); over all 3,360 unrelated pairs — 500 of them shut before any channel — it
+costs 17 µs a pair natively, and it shut on every one. On the chain's real bases (§4, 1.1.2) every
+pair is certifiable, the door costs 66 µs a pair, and this order is 13 µs dearer than the cheapest
+there. The route bars stay X1's: keeping every copy out of the Reject class would have taken bars
+of 1 / 3 / 164, which leave 55 % of unrelated pairs in the class instead of 93 %, and the class is
 no longer a filter on its own.
 
 **`Scope::Copy` and `NotCopy`.** A search needs the copy question, not the full state: under
@@ -224,9 +227,10 @@ rank records from wire files; `test/x-wasm.mjs` diffs them against the WebAssemb
 
 Native, one core, the specification's corpus of §33.1 as `xbench` builds it (344 works: 14 bases
 × 17 transforms, 60 busy "large" works, same-style, random, repeated-texture and noise
-negatives; 2,379 pairs across the classes of §33.2). Every table before the last subsection,
-the WebAssembly one included, is 1.0.0's, under X1; two runs agreed within a few percent and the
-figures are the first. The last subsection puts X2 beside X1 in one 1.1.1 run.
+negatives; 2,379 pairs across the classes of §33.2). Every table before the last two
+subsections, the WebAssembly one included, is 1.0.0's, under X1; two runs agreed within a few
+percent and the figures are the first. The next subsection puts X2 beside X1 in one 1.1.1 run;
+the last measures both on the chain's works (1.1.2).
 
 | pairwise, µs | p50 | p90 | p95 | p99 |
 |---|---:|---:|---:|---:|
@@ -345,6 +349,64 @@ no run separates the two). WebAssembly pays the same
 reference workload; on the JavaScript fixtures of the table above, whose pairs pass the anchor
 screen, the two profiles time alike.
 
+### 1.1.2 — X2 on the chain's works
+
+The first measurement on Pixagram's own works: the artworks Hivemind lists on the Pixa chain at
+one snapshot (177 works, head block 987,642; `node tools/chain-corpus.mjs`,
+docs/SPEC-SI-paph-si.md §9.7). `docs/calibration/SI3-PROVISIONAL.log` holds the runs:
+`sibench chain` over every pair of the 177 works (15,576 pairs, 31,152 queries in both arrival
+orders), and `sibench route`, `lost` and `doorprof` on the real-base corpus — 174 of the works
+under the twenty transforms of the PAPH-SI corpus, 3,095 of the transformed pairs
+comparator-42 Copy. Nothing of X2 changed.
+
+| on the chain's works | X1 | X2 |
+|---|---:|---:|
+| real-base Copy queries XRank does not read Copy, shown the target alone (of 6,190) | 0 | **0** |
+| real-base Copy pairs the pair screen rejects (of 3,095) | 0 | **0** |
+| real-base Copy pairs in the route's Reject class | 212 | 262 |
+| unrelated pairs of real bases in the Reject class (of 30,098: every ordered pair of distinct bases but the 2 pairs comparator 42 calls Copy) | 93.5 % | 93.5 % |
+| the largest bars that keep every real copy out of the class, and the unrelated share they leave in it | 1 / 8 / 145: 19.6 % | 1 / 6 / 141: 15.3 % |
+| queries between distinct works XRank reads Copy (of 31,148 that comparator 42 does not call Copy) | 0 | **0** |
+| global words equal on D4 copies, G1 / G3 (both sides multiples of 16 · the others) | 64 % · 78 % / 79 % · 44 % | **100 % · 100 %** / 95 % · 46 % |
+
+Every state XRank states on the 31,152 queries between distinct works equals comparator 42's:
+Unrelated 506, Related 18,550, Suspected 442, Copy 4 (the two pairs comparator 42 calls Copy, each
+within one author's works), NotCopy 10,828 (copy scope: below Suspected, not resolved further), and
+822 gated out. On the 225 pairs comparator 42 calls Suspected its gate drops 8 of the 450 queries;
+comparator 42's own gated rank screens out 30 of the pairs. Route derivation 2 puts more real blurs
+and re-dithers in the Reject class than derivation 1 (resample90 25 against 16, up150 15 against 6,
+dither 51 against 20); nothing acts on the class alone. The structural door shuts on all 15,049
+unrelated pairs of real bases, at 66 µs a pair (`doorprof --real`; 17.4 µs on the PAPH-SI corpus's
+unrelated pairs), and XRank's gate drops 822 of the 31,152 queries, each after the door shut. Every
+real pair is certifiable, and the door's order, within 0.1 µs of the cheapest on the PAPH-SI corpus
+(§2), is 13 µs dearer than the cheapest here: 65.6 against 52.3 µs per pair.
+
+**What it costs on real pairs** — one core, natively, over the 15,576 pairs:
+
+| | per pair or query |
+|---|---:|
+| comparator 42, lean | 1,327 µs |
+| comparator 42's gated `rank` (`paph_rank42` with gate: the stage-1 screen, which passes 79.4 % of real pairs, then comparator 42 on those) | 1,223 µs |
+| the pair screen, `xscreen` (X2) | 127.3 µs |
+| XRank under X2, one candidate per call | **786 µs** (1.6× faster than the gated rank) |
+| — of it, the 822 queries the gate drops | 97 µs each |
+| — the 30,300 the cascade decides | 803 µs each |
+| — the 30 that fall back to EXACT42 | 1,941 µs each |
+| XRank under X1 | 781 µs |
+
+On the synthetic reference workload — one query against 100 candidates in one call — XRank is
+3.2× comparator 42's ranking; over the real pairs, one candidate per call, 1.6×. The cascade
+runs whole: on 30,326 of the 30,330 queries that reach it (the 30,300 it decides and the 30 it
+hands to EXACT42), the sparse scan reads every row of the smaller side. The anchor tiers (96 →
+160 → 256 → 512 rows) expand until a model certificate holds or the rows run out, and on these
+pairs they ran out. The scan still evaluates only
+1.6 % of the descriptor distances the exhaustive scan computes; a callgrind profile outside the
+log (a build with symbols, three works against the other 176: 528 XRank calls) puts 38 % of the
+instructions in it. Every structural channel is computed exactly on 19,110 of the 30,330
+queries (63 %): comparator 42 reads 81 % of real pairs Related, and under copy scope the cascade
+stops short of exact evidence only once no corner of the lattice can reach Suspected. §6 says
+what would change this.
+
 ## 5. The release gates of §34–§35
 
 | gate | result | met |
@@ -384,10 +446,22 @@ below by the geometry it inherits, not by the retrieval it replaced.
 
 ## 6. Known gaps and next steps
 
-- **No real corpus (M8).** X1's parameters, which X2 keeps, are calibrated on the synthetic
-  corpus of §33.1 only. The route bars, the certificate and the anchor schedule must be
-  re-derived on a moderation corpus before the profile loses its PROVISIONAL name or the fast
-  policy becomes the default (§39 Phase 6).
+- **No moderation corpus (M8).** X1's parameters, which X2 keeps, are calibrated on the
+  synthetic corpus of §33.1. 1.1.2 measured them on the chain's works (§4) — no copy of a real
+  base lost, no false Copy between real works, every stated state equal to comparator 42's — but
+  177 works among which comparator 42 finds two copy pairs are not a moderation corpus. The
+  route bars, the certificate and the anchor schedule must be re-derived on one before the
+  profile loses its PROVISIONAL name or the fast policy becomes the default (§39 Phase 6).
+- **Real pairs run the whole cascade** (§4, 1.1.2). Over the chain's pairs XRank costs 786 µs a
+  query natively against 1,223 µs for comparator 42's gated `rank` (1.6×; the synthetic
+  reference workload, a different measurement, gives 3.2×), and its sparse scan reads every row
+  of the smaller side on all but 4 of the 30,330 queries that reach the cascade: the anchor
+  schedule expands until a certificate holds or the rows run out, and on the real pairs the rows
+  ran out. What could save them: an exit from the expansion
+  once no corner of the lattice can reach Suspected whatever the remaining tiers add, which
+  needs a bound on what a tier can add to the geometric evidence (a profile change, not a
+  patch: it changes which rows a report counts), or per-side caches of the decoded structural
+  sections for ranking. Neither is measured here.
 - **States below Copy under the safe policy** equal comparator 42's on the whole corpus, but
   not by construction: where the sparse pools miss chance correspondences that 42's exhaustive
   pool finds, 42 can read a weak geometric signal (3–5 inliers, no model) as `Suspected` where
@@ -396,50 +470,65 @@ below by the geometry it inherits, not by the retrieval it replaced.
 - **Small queries.** A query with few keypoints (B11, 25 kp) defers often (10 of 12 compared
   candidates) because the certificate needs 12 inliers it cannot have; each deferral then costs
   the cascade plus EXACT42. A certificate scaled to the query's keypoint count, or skipping the
-  cascade for tiny queries, is the obvious fix — it needs the real corpus to calibrate.
+  cascade for tiny queries, is the obvious fix. On the chain, small queries are rare: one work in
+  177 has fewer than 8 keypoints, the median has 512 (SPEC-SI §9.7), and 30 of 31,152 queries
+  between its works fall back to EXACT42.
 - **Geometry cost.** A grid over the other side's keypoints would make the §7 exclusion
   O(inliers) instead of O(inliers × keypoints) with identical output; the vote-table work per
   correspondence is inherent to 4.2's Hough stage.
 - **Sparse scan cost.** Bucket probes are two dependent loads and a bisection each; a lane
   kernel over a row's 48 codes would help natively (BMI2 `pext` for the projections) but has no
   SIMD128 counterpart, which is why it is not done here.
-- **The structural door's cost (X2).** About 17 µs natively on an unrelated pair (§2), paid
-  wherever a screen exit would drop a pair: the price of an exact bound over seven channels,
-  most of it the local channel's edge set (16k popcounts) and the shape and topology
-  channels. A cheaper sound bound per channel, or per-side caches of the decoded sections for
-  ranking, would lower it; small queries, thin against every candidate, pay it on every
+- **The structural door's cost (X2).** About 17 µs natively on an unrelated pair of the PAPH-SI
+  corpus (§2) and 66 µs on a pair of the chain's works, where its order is 13 µs dearer than the
+  cheapest (§4), paid wherever a screen exit would drop a pair: the price of an exact bound over
+  seven channels, most of it the local channel's edge set (16k popcounts) and the shape and
+  topology channels. A cheaper sound bound per channel, or per-side caches of the decoded sections
+  for ranking, would lower it; small queries, thin against every candidate, pay it on every
   candidate.
-- **Comparator 42's own gated rank drops far more.** 4.2.3's `rank` with `gate: true`
-  (`paph_rank42`, flags bit 0) — the call `docs/SEARCH.md` §4 and `integrations/pixagram-search`
-  make — screens out every pair whose exhaustive stage-1 pools stay below `geo_min_corr` (8), a
-  pool no larger than the smaller side's keypoint count. On the PAPH-SI corpus that is 178 of
-  the 976 comparator-42 copies, 164 of them — the three structure-only recolours above among
-  them — because a side has fewer than 8 keypoints and so can never pass (`sibench lost`). XRank
-  does not gate a candidate its route reads as Fast — 172 of the 178 under X2 — and under X2
-  reads Copy on all 976. Use `xrank` (X2), or `rank` with `gate: false`. SPEC-004 §A4.1.4 calls
-  the screen advisory: a screened-out pair is unscreened, never Unrelated, and the screen "may
-  never substitute" for the comparator.
+- **Comparator 42's own gated rank drops copies of works with few keypoints.** 4.2.3's `rank` with
+  `gate: true` (`paph_rank42`, flags bit 0) — the call `docs/SEARCH.md` §4 and
+  `integrations/pixagram-search` make — screens out every pair whose exhaustive stage-1 pools stay
+  below `geo_min_corr` (8), a pool no larger than the smaller side's keypoint count. On the PAPH-SI
+  corpus that is 178 of the 976 comparator-42 copies, 164 of them — the three structure-only
+  recolours above among them — because a side has fewer than 8 keypoints and so can never pass
+  (`sibench lost`). 1.1.1 called that far more than XRank drops, and it is, on that corpus; on the
+  chain's works the same gate screens out 8 of the 3,095 real-base copies, 4 of them for keypoints
+  — one artwork in 177 has fewer than 8 — and 30 of the 225 pairs comparator 42 calls Suspected
+  (XRank's gate: 8 of the 450 queries on them). XRank does not gate a candidate its route reads as
+  Fast — 172 of the 178 under X2, all 8 of the real ones — and under X2 reads Copy on all of them.
+  Use `xrank` (X2), or `rank` with `gate: false`. SPEC-004 §A4.1.4 calls the screen advisory: a
+  screened-out pair is unscreened, never Unrelated, and the screen "may never substitute" for the
+  comparator.
 - **G0 and G3 are as invariant as the wire's sections** (§2): the 16 × 16 thumbnail's cells and
   the integer DCT's rounding (G0), the shapes section's grid above 128 pixels and its
   eight-region tie (G3). Exact invariance needs symmetric sampling in the hasher — new wire
-  bytes, every stored work re-hashed.
+  bytes, every stored work re-hashed. Real canvases make it matter more: 91 % of the chain's
+  works have a side that is not a multiple of 16, and on their D4 copies G0 equals the
+  original's on 25 % and G3 on 46 % (96 % and 95 % on the bases whose sides are).
 - **The route class is a sketch, calibrated on one synthetic corpus.** X2 keeps X1's bars,
   calibrated on the xbench corpus; measured on the PAPH-SI corpus, 42 of its 976 copies score
-  in the Reject class, and no screen exit drops them on the class alone. The bars want the real
-  corpus.
+  in the Reject class, and no screen exit drops them on the class alone. On the chain's real
+  bases 262 of 3,095 copies do (X1: 212), mostly blurs, re-dithers and corner crops, and bars
+  that keep every one out would leave 15.3 % of the unrelated pairs of real bases in the class
+  instead of 93.5 %: the real works confirm the decision to keep the bars and act on the class
+  only behind the door.
 - **`xprepare` is 0.2–1.5 ms** per side (the index and the route). The PAX1 sidecar removes it
   from the query path; an index should store it beside the wires.
 
 ## 7. Verification
 
 ```bash
-cargo test --release --manifest-path rust/Cargo.toml     # 113 tests: 81 of 4.2.3, 21 of PAPH-X, 7 of PAPH-SI, 4 of 1.1.1
+cargo test --release --manifest-path rust/Cargo.toml     # 114 tests: 81 of 4.2.3, 21 of PAPH-X, 7 of PAPH-SI, 4 of 1.1.1, 1 of 1.1.2
 bash rust/check.sh                                       # the 3,160-case equivalence digest, unchanged
 npm test && npm run test:wasm && npm run test:equiv      # 4.2.3's suites, parity, the digest in both wasm builds
 npm run test:x                                           # test/x-wasm.mjs: native xcli vs SIMD128 vs baseline, 3,464 checks
 rust/target/release/xbench [--x1]                        # the §33–35 harness (≈ 10 s); --quick, --calibrate, --explain, --table, --noreject
 npm run bench:x [-- --x1]                                # test/x-bench.mjs: the WebAssembly timings
 rust/target/release/sibench lost|route|doorprof [--x1]   # the PAPH-SI corpus: the screen's losses, the route class, the door
+rust/target/release/sibench chain                        # the chain's works, every pair (a snapshot: node tools/chain-corpus.mjs)
+rust/target/release/sibench lost --corpus chain.bin      # the real-base corpus (sibench corpus --chain): XRank's losses
+rust/target/release/sibench route|doorprof --real --corpus chain.bin   # its route class and door: every pair of distinct bases but those comparator 42 calls Copy
 ```
 
 1.1.1's tests: X1's artefact is pinned byte for byte and X2 round-trips (a version-1 artefact

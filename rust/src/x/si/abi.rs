@@ -4,9 +4,9 @@
 //! ```text
 //!   paph_siabi() -> 1            paph_sisig_bytes() -> 104
 //!   paph_siprofile(psi, n) -> handle | 0
-//!       an SI artefact, or null for the shipped SI2-PROVISIONAL (bound to
-//!       X2; 1.1.0's SI1, bound to X1, is an artefact file); 0 when the
-//!       artefact does not decode
+//!       an SI artefact, or null for the shipped SI3-PROVISIONAL (bound to
+//!       X2, fitted on the chain's artworks; SI2, the synthetic fit, and
+//!       1.1.0's SI1 are artefact files); 0 when the artefact does not decode
 //!   paph_siprofile_free(h)
 //!   paph_siprofile_bytes(h) -> block           the artefact's bytes
 //!   paph_siprofile_id(h, out_32)               SHA-256 identity

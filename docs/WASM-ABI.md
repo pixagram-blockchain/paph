@@ -150,7 +150,7 @@ nothing of either moves. `paph_siabi()` returns 1.
 
 | export | does |
 |---|---|
-| `paph_siprofile(psi, n) -> h` | an SI profile artefact (`.psi`), or null for the shipped SI2-PROVISIONAL, bound to X2 (1.1.0's SI1-PROVISIONAL, the same fit bound to X1: `docs/calibration/SI1-PROVISIONAL.psi`); 0 when it does not decode |
+| `paph_siprofile(psi, n) -> h` | an SI profile artefact (`.psi`), or null for the shipped SI3-PROVISIONAL, bound to X2 and fitted on the Pixa chain's artworks (SI2-PROVISIONAL, the synthetic fit bound to X2, and 1.1.0's SI1-PROVISIONAL, bound to X1: `docs/calibration/SI2-PROVISIONAL.psi`, `SI1-PROVISIONAL.psi`); 0 when it does not decode |
 | `paph_siprofile_free(h)`, `paph_siprofile_bytes(h) -> block` | release; the artefact bytes |
 | `paph_siprofile_id(h, out32)`, `paph_siprofile_xid(h, out32)` | its SHA-256 identity; the identity of the X profile whose route lanes it bands |
 | `paph_siprofile_info(h, out_i32x4)` | probes, default threshold, default budget, feature version |

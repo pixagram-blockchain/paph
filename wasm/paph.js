@@ -253,9 +253,10 @@ export class XSide {
 /**
  * A PAPH-SI profile (.psi): six codebooks of 16 / 256 cells, the evidence
  * weights, the default threshold and budget, bound to one X profile.
- * `engine.siprofile()` is the shipped SI2-PROVISIONAL, bound to the shipped
- * X2-PROVISIONAL; SI1-PROVISIONAL (1.1.0's, bound to X1) is
- * `docs/calibration/SI1-PROVISIONAL.psi`.
+ * `engine.siprofile()` is the shipped SI3-PROVISIONAL, bound to the shipped
+ * X2-PROVISIONAL and fitted on the Pixa chain's artworks; SI2-PROVISIONAL (the
+ * synthetic fit, bound to X2) and SI1-PROVISIONAL (1.1.0's, bound to X1) are
+ * `docs/calibration/SI2-PROVISIONAL.psi` and `SI1-PROVISIONAL.psi`.
  */
 export class SIProfile {
   constructor(engine, handle) {
@@ -850,7 +851,7 @@ export class Engine {
   }
 
   /**
-   * A PAPH-SI profile from its artefact bytes, or the shipped SI2-PROVISIONAL
+   * A PAPH-SI profile from its artefact bytes, or the shipped SI3-PROVISIONAL
    * without them.  Its `xid()` names the X profile it was fitted against:
    * signatures and queries refuse sides prepared under any other.
    */

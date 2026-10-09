@@ -37,6 +37,11 @@ pub struct FitInput<'a> {
     pub noise_pairs: &'a [(usize, usize)],
     /// copy pairs the verifier can confirm, for the evidence weights
     pub evidence_pairs: &'a [(usize, usize)],
+    /// (query, background work) pairs that are not random ones — a copy and
+    /// its own original, when the background holds the originals (the
+    /// chain's fit) — skipped where a random draw lands on them; `None`
+    /// when the background is unrelated to every query (the synthetic fit)
+    pub related: Option<&'a dyn Fn(usize, usize) -> bool>,
 }
 
 pub struct FitOptions {
@@ -231,7 +236,25 @@ fn llr(copy: &[u64], rand: &[u64]) -> Vec<i32> {
 
 /// Fit a profile.
 pub fn fit(inp: &FitInput, o: &FitOptions) -> SiProfile {
-    let book: Vec<Codebook> = (0..FAMILIES).map(|f| fit_codebook(f, inp)).collect();
+    fit_on_books(fit_books(inp), inp, o)
+}
+
+/// Steps 1–5: one codebook per quantised family, its weights still zero, and
+/// how many background works carried the family (what each was fitted on).
+pub fn fit_books(inp: &FitInput) -> Vec<Codebook> {
+    (0..FAMILIES).map(|f| fit_codebook(f, inp)).collect()
+}
+
+/// How many background works carry family `f` — a codebook fitted on a
+/// handful of works is a guess, and a caller may keep another one instead.
+pub fn background_count(inp: &FitInput, f: usize) -> usize {
+    inp.background.iter().filter(|&&i| inp.fam[i][f].is_some()).count()
+}
+
+/// Step 6 and the default threshold, on the given codebooks (the evidence
+/// weights are re-estimated for every family, whichever fit its codebook
+/// came from).
+pub fn fit_on_books(book: Vec<Codebook>, inp: &FitInput, o: &FitOptions) -> SiProfile {
     let mut prof = SiProfile {
         version: SI_PROFILE_VERSION,
         features: FEATURES_VERSION,
@@ -278,7 +301,7 @@ pub fn fit(inp: &FitInput, o: &FitOptions) -> SiProfile {
     for &q in queries.iter() {
         for _ in 0..o.random_per_query {
             let t = inp.background[rng.below(inp.background.len() as u64) as usize];
-            if t != q {
+            if t != q && !inp.related.is_some_and(|r| r(q, t)) {
                 rand_pairs.push((q, t));
             }
         }

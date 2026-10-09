@@ -296,9 +296,17 @@ impl SiProfile {
         SiProfile::decode(SI2).expect("the shipped SI2 profile decodes")
     }
 
-    /// The shipped default: SI2, bound to the shipped X2.
+    /// SI3-PROVISIONAL: fitted by `sibench chainfit` on the Pixa chain's
+    /// artworks (`tools/chain-corpus.mjs`) and bound to X2-PROVISIONAL — the
+    /// codebooks balanced on real works, the weights measured on their copies
+    /// (SIL keeps SI2's codebook: too few real works carry it).
+    pub fn si3() -> SiProfile {
+        SiProfile::decode(SI3).expect("the shipped SI3 profile decodes")
+    }
+
+    /// The shipped default: SI3, bound to the shipped X2.
     pub fn shipped() -> SiProfile {
-        Self::si2()
+        Self::si3()
     }
 }
 
@@ -306,6 +314,8 @@ impl SiProfile {
 pub const SI1: &[u8] = include_bytes!("../../../../docs/calibration/SI1-PROVISIONAL.psi");
 /// SI2-PROVISIONAL (`docs/calibration/SI2-PROVISIONAL.psi`), bound to X2.
 pub const SI2: &[u8] = include_bytes!("../../../../docs/calibration/SI2-PROVISIONAL.psi");
+/// SI3-PROVISIONAL (`docs/calibration/SI3-PROVISIONAL.psi`), bound to X2.
+pub const SI3: &[u8] = include_bytes!("../../../../docs/calibration/SI3-PROVISIONAL.psi");
 
 #[cfg(test)]
 mod tests {
@@ -345,7 +355,6 @@ mod tests {
     #[test]
     fn si2_is_si1_bound_to_x2() {
         let (s1, s2) = (SiProfile::si1(), SiProfile::si2());
-        assert_eq!(SiProfile::shipped(), s2);
         assert_eq!(s2.encode(), SI2);
         assert_eq!(s2.xid, XProfile::x2().id(), "SI2 bands the X2 route lanes");
         assert_eq!(s2.name_str(), "SI2-PROVISIONAL");
@@ -355,5 +364,23 @@ mod tests {
         t.xid = s1.xid;
         assert_eq!(t, s1);
         println!("{} id {}", s2.name_str(), hex(&s2.id()));
+    }
+
+    #[test]
+    fn si3_is_the_shipped_profile_bound_to_x2() {
+        let (s2, s3) = (SiProfile::si2(), SiProfile::si3());
+        assert_eq!(SiProfile::shipped(), s3);
+        s3.validate().unwrap();
+        assert_eq!(s3.encode(), SI3, "decode ∘ encode is the identity on the shipped bytes");
+        assert_eq!(s3.xid, XProfile::x2().id(), "SI3 bands the X2 route lanes");
+        assert_eq!(s3.name_str(), "SI3-PROVISIONAL");
+        assert_eq!((s3.probes, s3.features, s3.budget), (s2.probes, s2.features, s2.budget));
+        // a fit of its own on every family but SIL, which keeps SI2's codebook
+        // (too few of the chain's works carry a silhouette)
+        for f in 0..FAMILIES {
+            let same = (s3.book[f].mean.clone(), s3.book[f].proj.clone(), s3.book[f].thr, s3.book[f].sig) == (s2.book[f].mean.clone(), s2.book[f].proj.clone(), s2.book[f].thr, s2.book[f].sig);
+            assert_eq!(same, f == crate::x::si::features::F_SIL, "family {f}");
+        }
+        println!("{} id {}", s3.name_str(), hex(&s3.id()));
     }
 }

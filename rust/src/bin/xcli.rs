@@ -18,7 +18,7 @@
 //!                                                  structure alone, anchor pools empty)
 //!
 //! A missing Tier 2 is spelled `-`.  Everything runs under the shipped
-//! X2-PROVISIONAL (and SI2-PROVISIONAL), or under X1-PROVISIONAL (and
+//! X2-PROVISIONAL (and SI3-PROVISIONAL), or under X1-PROVISIONAL (and
 //! SI1-PROVISIONAL) with `--x1` anywhere on the line.
 use paph::calibration::Profile;
 use paph::config::Config;
@@ -53,7 +53,7 @@ fn si_for(xb: &XBound) -> paph::x::si::SiProfile {
     if xb.xid == paph::x::XProfile::x1().id() {
         paph::x::si::SiProfile::si1()
     } else {
-        paph::x::si::SiProfile::si2()
+        paph::x::si::SiProfile::shipped()
     }
 }
 

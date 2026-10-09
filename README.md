@@ -83,19 +83,23 @@ paph.xrank(q, sides);                                    // one call: route tabl
 ```
 
 Measured on the specification's corpus (2,379 pairs; `rust/target/release/xbench`,
-`npm run bench:x`): zero copy disagreements with comparator 42 under the safe policy, zero
-false Copies under fast, zero copies hard-rejected by the screen, 1.4 % fallbacks, 99 % fewer
-descriptor pairs evaluated, zero allocations in the screen. In 1.1.1's run the reference search
-workload (a 512-keypoint query against 100 busy candidates) runs **3.2×** faster than comparator
-42's ranking, natively and in WebAssembly, and the fast-path compare 10.6× faster at p50; the
-pairwise screen is 4.7× faster at p95 and 0.9× at p50, where X2's structural door is paid.
-(1.0.0's run, under X1 and with a slower comparator 42, measured 7.1×, 26× and 15×.) On the
-PAPH-SI corpus's 976 comparator-42 copies, XRank shown the target alone reads Copy on every one,
-in both arrival orders. The specification's ≥ 10× release gates are **not** met and not
-claimed; the gate table, the per-class numbers and the known gaps are in
-[docs/PAPH-X.md](docs/PAPH-X.md). The shipped profile, X2, is provisional: calibrated on a
-synthetic corpus, not yet on a moderation corpus. 1.1.1 made it the default, keeping 1.0.0's
-X1 beside it, to address three screen problems — see [CHANGELOG.md](CHANGELOG.md).
+`npm run bench:x`): zero copy disagreements with comparator 42 under the safe policy, zero false
+Copies under fast, zero copies hard-rejected by the screen, 1.4 % fallbacks, 99 % fewer descriptor
+pairs evaluated, zero allocations in the screen. In 1.1.1's run the reference search workload (a
+512-keypoint query against 100 busy candidates) runs **3.2×** faster than comparator 42's ranking,
+natively and in WebAssembly, and the fast-path compare 10.6× faster at p50; the pairwise screen is
+4.7× faster at p95 and 0.9× at p50, where X2's structural door is paid. (1.0.0's run, under X1 and
+with a slower comparator 42, measured 7.1×, 26× and 15×.) On the PAPH-SI corpus's 976 comparator-42
+copies, XRank shown the target alone reads Copy on every one, in both arrival orders. On the Pixa
+chain's own artworks (1.1.2: 177 works read from the chain, 3,095 comparator-42 copies made from
+them) it reads Copy on every copy and on none of the 31,148 queries between distinct works that
+comparator 42 does not call Copy, at 0.79 ms a candidate natively against 1.22 ms for comparator
+42's gated ranking (1.6×; the synthetic reference workload gives 3.2×). The specification's ≥ 10×
+release gates are **not** met and not claimed; the gate table, the per-class numbers and the known
+gaps are in [docs/PAPH-X.md](docs/PAPH-X.md). The shipped profile, X2, is provisional: calibrated
+on a synthetic corpus, measured without change on the chain's works, not yet on a moderation
+corpus. 1.1.1 made it the default, keeping 1.0.0's X1 beside it, to address three screen problems —
+see [CHANGELOG.md](CHANGELOG.md).
 
 ## PAPH-SI: which stored works are worth comparing
 
@@ -115,12 +119,15 @@ index.query(q).hits;                          // [{ slot, score }], best first
 db.prepare(SI_SQL.query).all(...siSqlParams(q.plan()));   // the same answer from SQLite / D1
 ```
 
-Measured on the synthetic corpus (comparator-42 copies, `npm run bench:si`): requiring shape,
-palette and structure to agree keeps 74 % of copies at 698×; PAPH-SI's score keeps 92 % at 70×
-and 90.5 % at 98×; **in union with the exact keys, 99.8 % at 4,000 works** — XRank returns Copy
-on all of them end to end — **and 98.8 % at 104,000** (97.0 % with SI's pool cut to its
-default 2,000). The shipped profile, SI2 (1.1.0's SI1 fit, bound to X2), is provisional: fitted
-on synthetic art only.
+Measured on the synthetic corpus (comparator-42 copies, `npm run bench:si`, profile SI2):
+requiring shape, palette and structure to agree keeps 74 % of copies at 698×; PAPH-SI's score
+keeps 92 % at 70× and 90.5 % at 98×; **in union with the exact keys, 99.8 % at 4,000 works** —
+XRank returns Copy on all of them end to end — **and 98.8 % at 104,000** (97.0 % with SI's pool
+cut to its default 2,000). On the Pixa chain's own works SI2 admits half of all pairs, so 1.1.2
+ships **SI3**, fitted on them (`sibench chainfit`; `npm run bench:chain` reruns the measurement):
+the same fit on half of the works admits 0.5–0.9 % of the other half's unrelated pairs and keeps
+86 % of their copies, and SI3 with the exact keys nominates **99.6 %** of copies (in-sample).
+SI3 is provisional: 174 works at one snapshot of the chain, to be re-fitted as it grows.
 
 ## Faster, with the same bytes
 
@@ -153,7 +160,8 @@ answer is retrieve-then-verify, with PAPH supplying both halves:
 4. **Verify** — `rank(query, candidates, { gate: true })`; the comparator decides, and its report
    is the evidence. The gate passes a pair only on 8 keypoint correspondences or more, so it
    drops every copy of a work with fewer keypoints and some others — 178 of 976 comparator-42
-   copies on the PAPH-SI corpus: `gate: false`, or `xrank` under X2, keeps them.
+   copies on the PAPH-SI corpus, 8 of 3,095 on copies of the chain's works: `gate: false`, or
+   `xrank` under X2, keeps them.
 
 Measured on the test corpus (eight originals, 200 same-style distractors), the keys nominate the
 original of every mirrored, rotated, cropped, upscaled and inverted copy from either side of the
@@ -182,7 +190,7 @@ docs/                     SPEC-003, SPEC-004, SPEC-004.1, SPEC-004.2, SPEC-X, SP
                           SEARCH · WASM-ABI · calibration/ (.pcal, .psi artefacts) · golden/ (conformance vectors)
 integrations/             pixagram-search: the Cloudflare integration as a patch
 test/                     suites, parity, benchmarks, recall · x-wasm.mjs, x-bench.mjs (PAPH-X) · si-wasm.mjs (PAPH-SI)
-tools/                    build-wasm.sh · build-paph4x.mjs · gen-corpus.mjs
+tools/                    build-wasm.sh · build-paph4x.mjs · gen-corpus.mjs · chain-corpus.mjs (the Pixa chain's artworks)
 ```
 
 ## Build and verify
@@ -202,6 +210,7 @@ npm run test:x              # PAPH-X: native xcli vs both WebAssembly builds, sy
 npm run bench:x             # PAPH-X timings in WebAssembly;  rust/target/release/xbench  the native harness
 npm run test:si             # PAPH-SI: native vs both WebAssembly builds, index = definition, SQL = index
 npm run bench:si            # PAPH-SI: rust/sibench.sh — stability, recall vs reduction, funnel (--big: scaling)
+npm run bench:chain         # the same on the Pixa chain's artworks (fetched on first use; npm install for the decoders)
 ```
 
 `test:equiv` needs the digest-exporting builds: `tools/build-wasm.sh --equiv`.
@@ -214,7 +223,7 @@ npm run bench:si            # PAPH-SI: rust/sibench.sh — stability, recall vs 
 | comparator | **42** (SPEC-004.2); 41 frozen beside it; PAPH-X reports as **50** with 42's vocabulary | when the evidence says the judgement should |
 | calibration | **CAL-004-PROPOSED**, identified by its SHA-256; PAPH-X profile **X2-PROVISIONAL** bound to it (1.0.0's X1-PROVISIONAL kept beside it) | whenever a corpus is re-derived |
 | index keys | **KEYS_VERSION 1** | re-derive keys from stored wires; nothing is re-hashed |
-| screening index | **SI ABI 1**, feature derivation 1, profile **SI2-PROVISIONAL** bound to X2 (SI1-PROVISIONAL, the same fit, bound to X1) | re-derive signatures from stored wires; nothing is re-hashed |
+| screening index | **SI ABI 1**, feature derivation 1, profile **SI3-PROVISIONAL** bound to X2, fitted on the Pixa chain's works (SI2-PROVISIONAL, the synthetic fit, and SI1-PROVISIONAL, bound to X1, beside it) | re-derive signatures from stored wires; nothing is re-hashed |
 | WebAssembly ABI | **3** (ABI 2 unchanged, plus the PAPH-X exports, X ABI 1, and the PAPH-SI exports, SI ABI 1) | |
 
 `@pixagram/paph` numbered its releases by the comparator (4.2.3: comparator 42 with engines that
@@ -222,7 +231,8 @@ are faster and agree in four more places). `@pixagram/paph-x` starts over at **1
 package, renamed, with PAPH-X beside it and nothing of 4.2.3 changed — comparator 42,
 CAL-004-PROPOSED, ABI 3 / X ABI 1, profile X1-PROVISIONAL; 1.1.0 adds PAPH-SI beside them; 1.1.1
 ships profile X2 and addresses three screen problems without moving the wire, comparator 42 or the
-calibration (see [CHANGELOG.md](CHANGELOG.md)).
+calibration; 1.1.2 measures PAPH-X and PAPH-SI on the Pixa chain's own artworks and ships the SI
+profile fitted on them, SI3 (see [CHANGELOG.md](CHANGELOG.md)).
 
 ## License
 

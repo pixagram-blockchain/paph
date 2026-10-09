@@ -59,8 +59,9 @@ queue consumer:  decode ─► stats ─► paph stage ─► (upscale ─► em
 * **Memory, not just time.** The hasher needs ~60 bytes per pixel and WebAssembly memory never
   shrinks; an isolate has 128 MB for everything. Images over 768² (`PAPH_MAX_PIXELS`) are
   brought inside it first — an exact blow-up divided back to its pixels, anything else
-  box-filtered by the smallest integer factor that fits. Pixagram artworks (≤ ~430 px) are
-  hashed exactly as they are.
+  box-filtered by the smallest integer factor that fits. Most Pixagram artworks are hashed
+  exactly as they are: at `@pixagram/paph-x` 1.1.2's snapshot of the chain, 167 of 177 have a
+  long side of at most 430 px, and 3 exceed 768² (the largest is 2,160 × 1,184).
 * **Verdicts are replaced pair by pair.** A check replaces the verdicts of the pairs it
   examined and nothing else, in the same transaction that marks the stage complete, and writes
   a verdict only while both images are the ones it was reached on and both posts are live —
@@ -79,11 +80,26 @@ correspondences or more, and a pair has no more correspondences than its smaller
 keypoints, so every copy of a work with fewer than 8 keypoints is dropped unverified, with some
 others whose pools stay thin. On the PAPH-SI corpus that is 178 of the 976 pairs comparator 42
 calls Copy, 164 of them for the keypoint count ([PAPH-X.md](../../docs/PAPH-X.md) §6, measured
-in `@pixagram/paph-x` 1.1.1). How many Pixagram works have so few keypoints has not been
-measured. The patch is unchanged. Passing `gate: false`
-compares every nominated candidate. Verifying with XRank under the X2 profile keeps those copies
-without comparing every candidate ([SEARCH.md](../../docs/SEARCH.md) §4), but the vendored module
-is 4.2.3's and has no XRank: it needs `@pixagram/paph-x` 1.1.1 or later in `vendor/paph/`.
+in `@pixagram/paph-x` 1.1.1). On Pixagram's own works it is rare: of the 177 artworks on the
+chain at 1.1.2's snapshot one has fewer than 8 keypoints, and on copies made from them the gate
+screens out 8 of 3,095, 4 for keypoints ([SPEC-SI](../../docs/SPEC-SI-paph-si.md) §11). The
+patch is unchanged. Passing `gate: false` compares every nominated candidate. Verifying with
+XRank under the X2 profile keeps those copies without comparing every candidate
+([SEARCH.md](../../docs/SEARCH.md) §4), and costs 0.79 ms a candidate natively over the chain's
+pairs against 1.22 ms for the gated rank, but the vendored module is 4.2.3's and has no XRank:
+it needs `@pixagram/paph-x` 1.1.1 or later in `vendor/paph/`.
+
+## Known gap: `Suspected` on real works
+
+The stage stores verdicts from `Suspected` up (`PAPH_MIN_VERDICT`). Between the chain's works at
+1.1.2's snapshot comparator 42 reads `Suspected` ("partial agreement") on 225 of the 15,576 pairs,
+191 of them between two authors, and `Copy` on two, each within one author's works
+([SPEC-SI](../../docs/SPEC-SI-paph-si.md) §9.7, §11); its gated rank, which the stage runs, screens
+out 30 of the 225. How many of the rest the stage stores depends on how many its keys nominate,
+which is not measured here; if they are nominated, the stored verdicts grow with the number of
+pairs — up to 197 of these 15,576 with the two Copy pairs, 1.3 % — and a review queue fed with
+`Suspected` grows with them. `PAPH_MIN_VERDICT` set to `Copy` stores `Copy` and `Identical` only;
+the threshold itself is CAL-004's, which no 1.1.x release moves.
 
 ## Deploy
 

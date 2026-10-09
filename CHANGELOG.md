@@ -1,5 +1,101 @@
 # Changelog
 
+## 1.1.2 — 2026-10-08 — the Pixa chain's artworks: PAPH-SI fitted on them, PAPH-X measured on them
+
+The wire (3), comparator 42, CAL-004-PROPOSED, X2-PROVISIONAL, ABI 3, X ABI 1 and SI ABI 1 do not
+move; the equivalence digest (3,160 cases) is byte-identical natively and in both WebAssembly
+builds. The shipped PAPH-SI profile is now **SI3-PROVISIONAL**, fitted on the artworks of the
+Pixa chain; SI2 and SI1 stay as artefacts. The real-work figures below were measured on one
+snapshot of the chain; the runs, with the synthetic ones set beside them, are in
+`docs/calibration/SI3-PROVISIONAL.log`.
+
+**The chain's works.** `tools/chain-corpus.mjs` walks the root posts Hivemind lists on
+`https://api.pixagram.com` (`get_discussions_by_created`), keeps the artworks — a post whose body
+is the image itself, a WebP or PNG data URI — skips deleted ones, and decodes them with the
+decoders pixagram-search decodes with (`@jsquash/webp`, `@jsquash/png`, now devDependencies),
+writing RGBA, a manifest (author, permlink, time, SHA-256 of the image bytes) and the head block.
+The snapshot: head block 987,642 (2026-10-08 19:55:51 UTC), 205 posts, **177 artworks** by 30
+authors, all lossless WebP, no re-uploaded image bytes, 17 blog posts, 11 deleted. The images are
+not committed. `sibench corpus --chain` builds the PAPH-SI corpus with them as the bases (174 works
+under the twenty transforms, a real work as the paste's host, the 8,000 synthetic distractors as
+the population: 3,095 comparator-42 Copy pairs), and `sibench chain` measures every pair of the 177
+works (15,576 pairs). Real works are not the synthetic bases: 512 keypoints at the median and 469
+at the tenth percentile (one work has fewer than 8), 10 % carry the silhouette family (75 % of the
+synthetic population does), 91 % have a side that is not a multiple of 16.
+
+**SI2 does not screen real works; SI3 does.** SI2's codebooks, fitted on synthetic art, collapse on
+the chain's works (PAL spreads them over 3 effective cells of 256; a random pair shares a PAL cell
+with probability 1/2) and SI2 admits **48.7 %** of the pairs of distinct real works at its θ = 2.
+`sibench chainfit` fits the way `sibench fit` does, on real works — the codebooks from the
+originals, the noise and the weights from their transformed copies, the random pairs from the other
+originals (never a copy's own original, nor one comparator 42 calls a copy) — first on each of two
+folds, measured on the other, then on all 174. Fitted on one fold and measured on the other, its θ
+is the floor, 1, where it admits 0.48–0.90 % of the unrelated real pairs and keeps **85.7 %** of
+the copies; SI2 at the same 1 % keeps 71–72 %. SI3-PROVISIONAL is the fit on all 174 works (θ = 1,
+budget 2,000; 5,334 bytes, `dfe99f33b6a8dfc0…`; SIL keeps SI2's codebook, which 17 works are too
+few to fit; `sibench chainfit --corpus chain.bin` reproduces it byte for byte). Beside the exact
+keys it nominates **99.6 %** of the real bases' comparator-42 copies, in-sample (keys alone 98.8 %,
+SI3 alone 85.5 % at 0.97 % of the eval population), and XRank reads Copy on all of them. It gives
+up most corner crops, pastes and downscales to the keys; it is out of distribution on synthetic art
+(22 % of the synthetic population admitted, where SI2 admits 1.4 %); and it is fitted on 174 works
+— provisional, to be re-fitted as the chain grows (`npm run bench:chain` runs corpus → chain →
+chainfit → eval, fetching a snapshot when there is none; `sibench chainfit --name` names a new
+fit).
+
+**X2 on real works, unchanged.** XRank, shown the target alone, reads Copy on all 6,190
+comparator-42 Copy queries of the real bases (X1 too), and on none of the 31,148 queries between
+distinct works of the chain that comparator 42 does not call Copy; every verdict it states equals
+comparator 42's. The pair screen rejects none of the 3,095 copies, though 262 sit in the route's
+Reject class (X1: 212; mostly downscales, re-dithers, corner crops and resamples): bars keeping
+every copy out of the class would leave 15.3 % of unrelated real pairs in it instead of 93.5 %, so
+the bars stay, and nothing acts on the class alone. The structural door shuts on all 15,049
+unrelated pairs of real bases, at 66 µs a pair.
+
+**Found, not changed.**
+* XRank on real pairs costs **0.79 ms a query** natively against 1.22 ms for comparator 42's
+  gated `rank` (1.6×; the synthetic reference workload, a different measurement, gives 3.2×),
+  and its sparse scan reads every row of the smaller side on all but 4 of the 30,330 queries
+  that reach the cascade: the anchor tiers expand until a certificate holds or the rows run out.
+  An exit from the expansion needs a bound on what a tier can add (docs/PAPH-X.md §6); not in a
+  patch.
+* Comparator 42 reads Suspected ("partial agreement") on 225 of the 15,576 pairs, 191 of them
+  between two authors (1.3 % of cross-author pairs), and Copy on two pairs, each within one
+  author's works. A review queue fed with Suspected grows with the number of pairs; the
+  threshold is CAL-004's.
+* **1.1.1's alarm about comparator 42's own gate, sized.** `rank` with `gate: true` drops 178 of
+  the 976 synthetic copies, 164 for a side with fewer than 8 keypoints; on the chain's works it
+  drops 8 of 3,095, 4 for keypoints (one artwork in 177 has fewer than 8): works with so few
+  keypoints, common among the synthetic corpus's copy pairs, are rare on the chain. The advice
+  stands (XRank, or `gate: false`).
+* G0 and G3, the route's DCT and region words, equal their original's on 25 % and 46 % of D4
+  copies of real works whose sides are not multiples of 16 (96 % and 95 % for the others): the
+  symmetric sampling in the hasher that exact invariance needs (new wire bytes, every work
+  re-hashed) matters more on real art than the synthetic corpus suggested.
+* Comparator 42 certifies nearly every blur-like copy of a real work (166 down70, 171 resample90,
+  173 up150 of 174; synthetic: 0, 15, 6 of 120), which the index must then find: the union holds
+  93 % of the downscales.
+
+**Compatibility.** No wire, comparator, calibration or X profile changes; nothing is re-hashed and
+PAX1 sidecars stay valid. The default SI profile changes, so every SI signature and posting
+changes: re-derive the stored signatures from the wires under SI3 (`paph_sisig_wire`) and swap
+the postings, keyed by the profile id stored with each row (SPEC-SI §7.4).
+Hosts that keep SI2 load it from `docs/calibration/SI2-PROVISIONAL.psi`.
+
+**Harness and tests.** `sibench` adds `corpus --chain`, `chain`, `chainfit [--name]`,
+`route --real` and `doorprof --real` (every pair of distinct bases but those comparator 42 calls
+Copy), `--corpus NAME` and `--profile PATH`, and `eval` checks every Copy XRank finds among the
+distractors against comparator 42 (it agrees on all of them, on both corpora);
+`rust/sibench.sh --chain` is `npm run bench:chain`. The fit's random pairs can now skip related
+pairs (`FitInput::related`), which the synthetic fit does not use: SI2 and SI1 refit byte for byte.
+One new unit test (114 in all): SI3 is the shipped profile, bound to X2, every codebook its own but
+SIL's; the copies test checks both SI2 and SI3, SI2 against its unrelated bound too.
+`npm run test:si` (1,421 checks) checks the shipped profile is SI3 byte for byte.
+
+**Documentation.** `docs/SPEC-SI-paph-si.md` (header, §0, §2, §4.3, §5.4, §6, §8, §9.1, §9.2, §9.5,
+§9.7 new, §10, §11), `docs/PAPH-X.md` (header, status, §2, §4's new last subsection, §6, §7),
+`docs/SEARCH.md` (§3b, §4, §6), `docs/WASM-ABI.md`, the README, the integration's README (the gate
+on real works, Suspected on real works), the glue's and types' doc comments.
+
 ## 1.1.1 — 2026-10-08 — profile X2: 1.1.0's three findings, addressed
 
 The wire (3), comparator 42, CAL-004-PROPOSED, ABI 3, X ABI 1 and SI ABI 1 do not move; the

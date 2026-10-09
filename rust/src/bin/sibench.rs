@@ -1,38 +1,62 @@
-//! PAPH-SI benchmark and fitting harness (SPEC-SI §9), and the corpus the
-//! 1.1.1 screen fixes were measured on (docs/PAPH-X.md §6).
+//! PAPH-SI benchmark and fitting harness (SPEC-SI §9), the corpus the
+//! 1.1.1 screen fixes were measured on (docs/PAPH-X.md §6), and the chain's
+//! artworks (1.1.2, SPEC-SI §9.7).
 //!
 //!     sibench corpus [--bases N] [--distractors N] [--from K] [--out F]   hash a corpus, cache the wires
-//!     sibench fit [--out PATH]                     fit SI2 (SI1 with --x1) on the fit split, write the profile
+//!     sibench corpus --chain DIR [--distractors N] [--out chain.bin]
+//!                                                   the same with the chain's artworks as the bases
+//!                                                   (DIR from `node tools/chain-corpus.mjs`)
+//!     sibench chain [--chain DIR]                   the chain's artworks themselves, and every pair
+//!                                                   of them through comparator 42, the screens,
+//!                                                   XRank, SI2 and SI3
+//!     sibench fit [--out PATH]                     fit SI2 (SI1 with --x1) on the synthetic fit split
+//!     sibench chainfit --corpus chain.bin [--name NAME] [--out PATH]
+//!                                                   fit SI on the chain's works: two held-out folds
+//!                                                   against SI2, then the fit on every base, written
+//!                                                   to docs/calibration/NAME.psi (NAME defaults to
+//!                                                   SI3-PROVISIONAL, whose artefact the crate embeds;
+//!                                                   a fit on a later snapshot is another profile —
+//!                                                   give it another name)
 //!     sibench eval [--profile PATH] [--big F] [--e2e N] [--nogate]
 //!                                                   stability matrix, the proposal's designs against
 //!                                                   SI, the funnel with the key index and XRank,
 //!                                                   scaling to the big distractor file, timings
-//!     sibench route [--neg N]                      the route class and the pair screen on every
-//!                                                   comparator-42 copy and on unrelated pairs, the
-//!                                                   bars that would keep every copy out of the Reject
-//!                                                   class, the global words, the SI cells and the
-//!                                                   DCT section under the square's symmetries (split
-//!                                                   by the DCT thumbnail's grid and the shapes
-//!                                                   section's)
+//!     sibench route [--neg N] [--real] [--profile PATH]
+//!                                                   the route class and the pair screen on every
+//!                                                   comparator-42 copy and on unrelated pairs (--real:
+//!                                                   every base against every other but those
+//!                                                   comparator 42 calls Copy), the bars that
+//!                                                   would keep every copy out of the Reject class,
+//!                                                   the global words, the SI cells and the DCT
+//!                                                   section under the square's symmetries (split by
+//!                                                   the DCT thumbnail's grid and the shapes section's)
 //!     sibench lost [--nogate]                      the copies XRank does not read Copy, shown the
 //!                                                   target alone, and why (under X2, also the ones
 //!                                                   X1 loses and what keeps them); the copies
 //!                                                   comparator 42's own gated rank screens out
-//!     sibench doorprof                             the structural door on unrelated pairs: where
+//!     sibench doorprof [--real]                    the structural door on unrelated pairs: where
 //!                                                   it shuts, what each step costs, the cheapest orders
+//!                                                   (--real: every pair of distinct bases but those
+//!                                                   comparator 42 calls Copy)
 //!
-//! Every command runs under the shipped X2-PROVISIONAL and SI2-PROVISIONAL,
-//! or under 1.1.0's X1-PROVISIONAL and SI1-PROVISIONAL with `--x1`.
-//! Experiments: `--bars l,b,g` (route lower bars), `--nodoor`.
+//! `--corpus NAME` picks the corpus file under `--dir` (default corpus.bin).
+//! Every command runs under the shipped X2-PROVISIONAL, or under 1.1.0's
+//! X1-PROVISIONAL with `--x1`; where SI is measured, under the synthetic fit
+//! bound to it (SI2, or SI1 with --x1), which SPEC-SI's synthetic tables were
+//! printed with — `--profile ../docs/calibration/SI3-PROVISIONAL.psi` measures
+//! the shipped SI3.  Experiments: `--bars l,b,g` (route lower bars), `--nodoor`.
 //!
-//! The corpus is built from the engine's own generators (`synth.rs`): bases
-//! under twenty transforms, and same-style distractors drawn from the same
-//! generators with other seeds — the hardest negatives this corpus has.
-//! Splits: bases in alternate blocks of eight (one of each generator kind per
-//! block) and the first half of the distractors fit; the other blocks and the
-//! second half evaluate.  Recall is measured on the pairs comparator
-//! 42 itself calls Copy (or Identical) — a nominator need not find what the
-//! verifier cannot confirm — and in both arrival orders.
+//! The synthetic corpus is built from the engine's own generators
+//! (`synth.rs`): bases under twenty transforms, and same-style distractors
+//! drawn from the same generators with other seeds — the hardest negatives
+//! that corpus has.  The chain's corpus takes the chain's artworks as the
+//! bases (a real one as the paste's host) and keeps the synthetic
+//! distractors as the population; `sibench chain` measures the real pairs.
+//! Splits: bases in alternate blocks of eight and the first half of the
+//! distractors fit; the other blocks and the second half evaluate.  Recall is
+//! measured on the pairs comparator 42 itself calls Copy (or Identical) — a
+//! nominator need not find what the verifier cannot confirm — and in both
+//! arrival orders.
 //!
 //! Nothing printed here is a claim until it is printed here.
 
@@ -49,7 +73,7 @@ use paph::x::rank::{xrank, RankScratch, XRankOptions, XRANK_FIELDS};
 use paph::x::route::XRoute;
 use paph::x::si::code::{SiQuery, SiSig};
 use paph::x::si::features::{families, FAMILIES, FAMILY_NAMES};
-use paph::x::si::fit::{fit, FitInput, FitOptions};
+use paph::x::si::fit::{background_count, fit, fit_books, fit_on_books, FitInput, FitOptions};
 use paph::x::si::index::SiIndex;
 use paph::x::si::profile::*;
 use paph::x::{XBound, XCtx, XPrepared, XProfile};
@@ -341,6 +365,65 @@ pub fn load(path: &str) -> Vec<Rec> {
     v
 }
 
+// ------------------------------------------------------------------ the chain
+
+/// One artwork of a `tools/chain-corpus.mjs` snapshot.
+pub struct ChainWork {
+    pub author: String,
+    pub permlink: String,
+    pub created: String,
+    pub sha: String,
+    pub img: Img,
+}
+
+/// A snapshot's works, oldest first, one per distinct image (the first upload
+/// of byte-identical image bytes stands for the others), and how many uploads
+/// repeated an earlier one's bytes.
+fn load_chain(dir: &str) -> (Vec<ChainWork>, usize) {
+    let idx = std::fs::read_to_string(format!("{dir}/index.tsv")).expect("read index.tsv (run `node tools/chain-corpus.mjs` first)");
+    let mut seen = std::collections::HashSet::new();
+    let (mut out, mut dups) = (Vec::new(), 0usize);
+    for line in idx.lines() {
+        let f: Vec<&str> = line.split('\t').collect();
+        if f.len() < 9 {
+            continue;
+        }
+        if !seen.insert(f[5].to_string()) {
+            dups += 1;
+            continue;
+        }
+        let b = std::fs::read(format!("{dir}/{}", f[8])).expect("read an rgba file");
+        let w = u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize;
+        let h = u32::from_le_bytes([b[4], b[5], b[6], b[7]]) as usize;
+        assert_eq!(b.len(), 8 + w * h * 4, "{}: truncated", f[8]);
+        out.push(ChainWork { author: f[0].into(), permlink: f[1].into(), created: f[2].into(), sha: f[5].into(), img: Img { w, h, px: b[8..].to_vec() } });
+    }
+    (out, dups)
+}
+
+/// The snapshot's head block, time and manifest digest, read from its
+/// snapshot.json without a JSON parser.
+fn chain_snapshot(dir: &str) -> String {
+    let s = std::fs::read_to_string(format!("{dir}/snapshot.json")).unwrap_or_default();
+    let field = |k: &str| -> String {
+        let key = format!("\"{k}\":");
+        s.find(&key).map(|i| s[i + key.len()..].split([',', '\n']).next().unwrap_or("").trim().trim_matches('"').to_string()).unwrap_or_default()
+    };
+    format!("head block {}, {} UTC, manifest {}", field("head_block"), field("time"), &field("manifest_sha256").chars().take(16).collect::<String>())
+}
+
+/// The largest original the corpus takes as a base: its 3× upscale stays
+/// within the search engine's decode cap (2048 × 2048 pixels).
+const CHAIN_BASE_MAX_PIXELS: usize = 2048 * 2048 / 9;
+
+/// The host a real base is pasted into: the next real base, blown up by the
+/// smallest integer factor that covers twice the guest and cropped to it.
+fn chain_host(guest: &Img, host: &Img) -> Img {
+    let (w, h) = (guest.w * 2 + 20, guest.h * 2 + 16);
+    let k = ((w + host.w - 1) / host.w).max((h + host.h - 1) / host.h).max(1);
+    crop(&nearest_up(host, k), 0, 0, w, h)
+}
+
 /// `Engine.indexKeys` (KEYS_VERSION 1, wasm/paph.js): the Tier-1 local codes
 /// folded to 53 bits, and the 24-bit bands of the 64 strongest keypoints
 /// (stored) or of every keypoint and its mirrored descriptor (query).
@@ -410,9 +493,11 @@ struct Corpus {
 }
 
 impl Corpus {
-    fn open(dir: &str, xb: &XBound) -> Corpus {
+    /// `path`: a corpus file `sibench corpus` wrote (`--corpus NAME` under
+    /// `--dir`, default corpus.bin; `chain.bin` for the chain's).
+    fn open(path: &str, xb: &XBound) -> Corpus {
         let t0 = Instant::now();
-        let recs = load(&format!("{dir}/corpus.bin"));
+        let recs = load(path);
         let sides: Vec<Prepared> = recs.iter().map(|r| Prepared::new(&r.t1, Some(&r.t2)).unwrap()).collect();
         let fam: Vec<_> = sides.iter().map(families).collect();
         let routes: Vec<XRoute> = sides.iter().map(|p| XRoute::build(p, &xb.salts, &xb.xp)).collect();
@@ -576,6 +661,23 @@ fn fam_name(f: usize) -> &'static str {
 
 // ------------------------------------------------------------------- fit
 
+/// The SI profile a measurement reads: `--profile PATH`, or the synthetic
+/// fit bound to the X profile in use — SI1 under X1, SI2 under X2 — which the
+/// synthetic corpus' tables were printed with.  The shipped SI3 is
+/// `--profile ../docs/calibration/SI3-PROVISIONAL.psi`.
+fn si_profile_arg(args: &[String], xb: &XBound) -> SiProfile {
+    match args.iter().position(|a| a == "--profile") {
+        Some(i) => SiProfile::decode(&std::fs::read(&args[i + 1]).expect("read profile")).expect("decode profile"),
+        None => {
+            if xb.xid == XProfile::x1().id() {
+                SiProfile::si1()
+            } else {
+                SiProfile::si2()
+            }
+        }
+    }
+}
+
 /// The SI profile name a fit writes for the X profile it bands: SI1 for
 /// X1 (1.1.0's), SI2 for X2 — the same codebooks and weights (route
 /// derivation 2 changes the global words, not the lanes SI bands), bound to
@@ -609,7 +711,7 @@ fn cmd_fit(c: &Corpus, xb: &XBound, out: &str) {
         budget: 2000,
     };
     let t0 = Instant::now();
-    let inp = FitInput { fam: &c.fam, mh: &mh, background: &c.fit_d, noise_pairs: &noise, evidence_pairs: &evidence };
+    let inp = FitInput { fam: &c.fam, mh: &mh, background: &c.fit_d, noise_pairs: &noise, evidence_pairs: &evidence, related: None };
     let prof = fit(&inp, &o);
     let b = prof.encode();
     std::fs::write(out, &b).expect("write profile");
@@ -695,7 +797,9 @@ fn designs() -> Vec<Design> {
     ]
 }
 
-fn cmd_eval(c: &Corpus, prof: &SiProfile, xb: &XBound, args: &[String]) {
+/// `chain`: the corpus' bases are the chain's artworks (`corpus --chain`), which
+/// have no generator or backdrop to report false copies by.
+fn cmd_eval(c: &Corpus, prof: &SiProfile, xb: &XBound, args: &[String], chain: bool) {
     let xopts = if args.iter().any(|a| a == "--nogate") { XRankOptions { gate: false, ..XRankOptions::default() } } else { XRankOptions::default() };
     let n = c.recs.len();
     println!("PAPH-SI evaluation — profile {} ({}), X {} — {} works, eval population {} distractors\n", prof.name_str(), prof.id_hex16(), xb.xp.name_str(), n, c.ev_d.len());
@@ -978,7 +1082,7 @@ fn cmd_eval(c: &Corpus, prof: &SiProfile, xb: &XBound, args: &[String]) {
     ths.sort_unstable();
     ths.dedup();
     for &th in ths.iter() {
-        row(format!("SI score ≥ {th}{}", if th == prof.threshold { " (SI1 default)" } else { "" }), &|r: &QRec| r.ttouch && r.tscore >= th, &|r: &QRec, k: usize| r.dscore[k] >= th);
+        row(format!("SI score ≥ {th}{}", if th == prof.threshold { " (the profile's default)" } else { "" }), &|r: &QRec| r.ttouch && r.tscore >= th, &|r: &QRec, k: usize| r.dscore[k] >= th);
     }
 
     // ------------------------------------------------- the funnel
@@ -1015,6 +1119,9 @@ fn cmd_eval(c: &Corpus, prof: &SiProfile, xb: &XBound, args: &[String]) {
     let (mut pool_si, mut pool_keys, mut pool_union) = (0usize, 0usize, 0usize);
     let mut false_copies = 0usize;
     let mut false_kinds: HashMap<(&'static str, &'static str), usize> = HashMap::new();
+    let mut false_42 = 0usize;
+    let base42 = Profile::cal004();
+    let bcfg42 = paph::v4::bind(&Config::default(), &base42);
     let mut false_bg: HashMap<(i32, i32), usize> = HashMap::new();
     let first_d = c.recs.iter().position(|r| r.base < 0).unwrap_or(0);
     let mut t_rank: Vec<f64> = Vec::new();
@@ -1089,10 +1196,17 @@ fn cmd_eval(c: &Corpus, prof: &SiProfile, xb: &XBound, args: &[String]) {
                     }
                 } else if is_copy {
                     false_copies += 1;
+                    // does comparator 42 call the pair Copy too? (XRank's safe
+                    // policy promises its Copy answers)
+                    let (pa, pb) = (&c.sides[r.qi], &c.sides[i]);
+                    let sw = canon_swapped(pa, pb);
+                    let (ca, cb) = if sw { (pb, pa) } else { (pa, pb) };
+                    let v42 = compare_in(&mut PairCtx::new(ca, cb), sw, &bcfg42, &base42, Reading::Lean).base.verdict;
+                    false_42 += (v42 == "Copy" || v42 == "Identical") as usize;
                     let qb = c.recs[r.qi].base.max(0) as usize;
                     let dk = if c.recs[i].base < 0 { distractor_kind(i - first_d) } else { "variant" };
-                    *false_kinds.entry((base_kind(qb), dk)).or_insert(0) += 1;
-                    if c.recs[i].base < 0 {
+                    *false_kinds.entry((if chain { "artwork" } else { base_kind(qb) }, dk)).or_insert(0) += 1;
+                    if c.recs[i].base < 0 && !chain {
                         *false_bg.entry((base_bg(qb), distractor_bg(i - first_d))).or_insert(0) += 1;
                     }
                 }
@@ -1109,7 +1223,7 @@ fn cmd_eval(c: &Corpus, prof: &SiProfile, xb: &XBound, args: &[String]) {
     println!("| SI ∪ keys | {:.1} | {:.1}% |", pool_union as f64 / q, 100.0 * tot(&f_union));
     let ne: usize = n_e2e.iter().sum();
     println!("| SI ∪ keys → XRank says Copy | {:.1} | {:.1}% of {} |", pool_union as f64 / q, 100.0 * f_e2e.iter().sum::<usize>() as f64 / ne.max(1) as f64, ne);
-    println!("\nCopies XRank found among the distractors it was shown: {false_copies}. XRank per query: p50 {:.1} ms, p95 {:.1} ms; key nomination p50 {:.0} µs (in-memory sorted arrays).", pct(&mut t_rank, 0.5), pct(&mut t_rank, 0.95), pct(&mut t_keys, 0.5));
+    println!("\nCopies XRank found among the distractors it was shown: {false_copies} (comparator 42 calls {false_42} of them Copy too). XRank per query: p50 {:.1} ms, p95 {:.1} ms; key nomination p50 {:.0} µs (in-memory sorted arrays).", pct(&mut t_rank, 0.5), pct(&mut t_rank, 0.95), pct(&mut t_keys, 0.5));
     if !per_cand.is_empty() {
         let mean = per_cand.iter().sum::<f64>() / per_cand.len() as f64;
         println!("XRank cost per candidate, per query: p50 {:.0} µs, mean {:.0} µs, p95 {:.0} µs; it compared {:.1}% of the candidates it was shown (the rest stopped at the route and anchor-tier screen).", pct(&mut per_cand, 0.5), mean, pct(&mut per_cand, 0.95), 100.0 * compared as f64 / shown.max(1) as f64);
@@ -1119,10 +1233,15 @@ fn cmd_eval(c: &Corpus, prof: &SiProfile, xb: &XBound, args: &[String]) {
     }
     let mut fk: Vec<_> = false_kinds.into_iter().collect();
     fk.sort_by(|a, b| b.1.cmp(&a.1));
-    println!("By generator (query base → distractor): {}", fk.iter().map(|((a, b), n)| format!("{a} → {b}: {n}")).collect::<Vec<_>>().join(", "));
-    let mut fb: Vec<_> = false_bg.into_iter().collect();
-    fb.sort_by(|a, b| b.1.cmp(&a.1));
-    println!("By backdrop (base → distractor; 0 transparent, 1 flat, 2 dithered gradient, −1 noise field): {}\n", fb.iter().map(|((a, b), n)| format!("{a} → {b}: {n}")).collect::<Vec<_>>().join(", "));
+    if false_copies > 0 {
+        println!("By generator (query base → distractor): {}", fk.iter().map(|((a, b), n)| format!("{a} → {b}: {n}")).collect::<Vec<_>>().join(", "));
+        if !chain {
+            let mut fb: Vec<_> = false_bg.into_iter().collect();
+            fb.sort_by(|a, b| b.1.cmp(&a.1));
+            println!("By backdrop (base → distractor; 0 transparent, 1 flat, 2 dithered gradient, −1 noise field): {}", fb.iter().map(|((a, b), n)| format!("{a} → {b}: {n}")).collect::<Vec<_>>().join(", "));
+        }
+    }
+    println!();
     println!("| transform | pairs | keys | SI | SI ∪ keys | → XRank Copy |");
     println!("|---|---:|---:|---:|---:|---:|");
     for t in 1..TRANSFORMS.len() {
@@ -1182,7 +1301,7 @@ fn scaling(c: &Corpus, prof: &SiProfile, xb: &XBound, sigs: &[SiSig], keyset: &[
     drop(big);
     eprintln!("big population: {} works signed and keyed in {:.1} s", bsig.len(), t0.elapsed().as_secs_f64());
     let th = prof.threshold;
-    // 2000 is SI1's default budget
+    // 2000 is the profiles' default budget
     const BUDGETS: [usize; 5] = [250, 1000, 2000, 4000, 16000];
     println!("| population | SI pool | SI pool share | SI recall | keys@{KEY_K} recall | SI ∪ keys recall | SI top-250 ∪ keys | top-1000 ∪ keys | top-2000 ∪ keys | top-4000 ∪ keys | top-16000 ∪ keys | SI postings read / query | SI query p50 | keys query p50 |");
     println!("|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
@@ -1276,15 +1395,21 @@ fn cmd_route(c: &Corpus, xb: &XBound, args: &[String]) {
     let mut neg: Vec<RouteScore> = Vec::new();
     let dist: Vec<usize> = (0..c.recs.len()).filter(|&i| c.recs[i].base < 0).collect();
     let k_neg = arg(args, "--neg", 40);
+    // --real (the chain's corpus): every base against every other base, the
+    // population of real works, instead of synthetic distractors
+    let real = args.iter().any(|a| a == "--real");
+    let originals: Vec<XPrepared> = if real { (0..c.nb).map(|b| xside(c.at[&(b, 0)])).collect() } else { Vec::new() };
+    // … but not the originals comparator 42 calls copies of each other
+    let copies42 = if real { originals_copies42(c) } else { Default::default() };
     // two partitions of the bases: the thumbnail's (both sides multiples of
     // 16) and the shapes section's (long side at most 128 px after the front
     // end's integer downscale, where its grid is the pixel grid)
     const SPLIT: [&str; 4] = ["both sides multiples of 16", "other sizes", "long side ≤ 128 px", "long side > 128 px"];
     let mut g_eq = [[0usize; 4]; 4];
     let mut g_n = [0usize; 4];
-    // the SI cells on the same copies (they do not depend on the X profile:
-    // SI1 and SI2 are one fit)
-    let prof = if xb.xid == XProfile::x1().id() { SiProfile::si1() } else { SiProfile::si2() };
+    // the SI cells on the same copies, under the profile `si_profile_arg`
+    // picks (SI1 and SI2 are one fit; SI3 with --profile)
+    let prof = si_profile_arg(args, xb);
     let mut si_eq = [[0usize; FAMILIES]; 4];
     let mut si_n = [[0usize; FAMILIES]; 4];
     let mut flip_s = [[0usize; 8]; 8];
@@ -1357,6 +1482,16 @@ fn cmd_route(c: &Corpus, xb: &XBound, args: &[String]) {
                 }
             }
         }
+        if real {
+            let i = c.at[&(b, 0)];
+            for o in 0..c.nb {
+                let j = c.at[&(o, 0)];
+                if o != b && !copies42.contains(&(i.min(j), i.max(j))) {
+                    neg.push(xscreen(&xa, &originals[o as usize], &cfg, xb, &mut ctx).route);
+                }
+            }
+            continue;
+        }
         for k in 0..k_neg {
             let d = dist[(b as usize * 7919 + k * 104_729) % dist.len()];
             neg.push(xscreen(&xa, &xside(d), &cfg, xb, &mut ctx).route);
@@ -1395,7 +1530,8 @@ fn cmd_route(c: &Corpus, xb: &XBound, args: &[String]) {
             }
         }
     }
-    println!("\nUnrelated pairs (each base against {k_neg} distractors and 5 other bases, {} pairs): the profile's bars put {:.1}% in the Reject class; the largest bars that put no copy there — local {} / band {} / global {} — put {:.1}%.", neg.len(), 100.0 * rate(xp.t_local_low, xp.t_band_low, xp.t_global_low), best.1, best.2, best.3, 100.0 * best.0);
+    let who = if real { format!("each base against every other base but the {} pairs comparator 42 calls Copy", copies42.len()) } else { format!("each base against {k_neg} distractors and 5 other bases") };
+    println!("\nUnrelated pairs ({who}, {} pairs): the profile's bars put {:.1}% in the Reject class; the largest bars that put no copy there — local {} / band {} / global {} — put {:.1}%.", neg.len(), 100.0 * rate(xp.t_local_low, xp.t_band_low, xp.t_global_low), best.1, best.2, best.3, 100.0 * best.0);
     println!("\nThe route's global words on D4 copies (mirror, rot90, rot180, transpose; every base): share equal to the original's, under two partitions of the bases — the DCT thumbnail's (16 × 16 cells) and the shapes section's (cells of ⌈long side / 128⌉ px, sizes after the front end's integer downscale).\n");
     println!("| canvas | pairs | G0 (DCT) | G1 (runs) | G2 (adjacency) | G3 (regions) |");
     println!("|---|---:|---:|---:|---:|---:|");
@@ -1439,46 +1575,538 @@ fn cmd_route(c: &Corpus, xb: &XBound, args: &[String]) {
     println!("\nThe Tier-1 DCT section itself on the {n_d4} D4 copies with a measurable thumbnail, aligned under the best of the eight symmetries: over the 63 AC coefficients of the lowest 8 x 8 frequencies, a magnitude bit differs from the original's on {:.1}–{:.1}% of copies (median {:.1}%), a sign bit on {:.1}–{:.1}% (median {:.1}%).", ms[0], ms[ms.len() - 1], ms[ms.len() / 2], ss[0], ss[ss.len() - 1], ss[ss.len() / 2]);
 }
 
+/// `sibench chain [--chain DIR]`: the chain's artworks themselves — what they
+/// are (sizes, integer upscales, transparency, palettes, keypoints, hashing
+/// cost) and every pair of them through comparator 42, its gated rank's
+/// screen, the pair screen, XRank shown the target alone under X1 and X2, and
+/// SI2's score.  The pairs comparator 42 calls Copy are written, with their
+/// accounts, to DIR/copies.tsv beside the snapshot, not printed.
+fn cmd_chain(src: &str) {
+    use paph::x::compare::xscreen;
+    use paph::x::route::RouteClass;
+    let (works, dups) = load_chain(src);
+    let n = works.len();
+    let authors: std::collections::BTreeSet<&str> = works.iter().map(|w| w.author.as_str()).collect();
+    let (first, last) = (works.iter().map(|w| w.created.as_str()).min().unwrap_or(""), works.iter().map(|w| w.created.as_str()).max().unwrap_or(""));
+    // the containers, as the manifest records them (one JSON object a line)
+    let manifest = std::fs::read_to_string(format!("{src}/manifest.jsonl")).unwrap_or_default();
+    let mut containers: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    for line in manifest.lines().filter(|l| !l.trim().is_empty()) {
+        let mime = line.split("\"mime\":\"").nth(1).and_then(|r| r.split('"').next()).unwrap_or("?");
+        let lossy = if line.contains("\"lossy\":true") { "lossy" } else { "lossless" };
+        *containers.entry(format!("{mime} {lossy}")).or_insert(0) += 1;
+    }
+    println!("The chain's artworks — {src} ({}): {} artworks, {} distinct images ({} byte-identical re-uploads left out), by {} authors, posted {first} to {last} UTC; as uploaded: {}\n", chain_snapshot(src), n + dups, n, dups, authors.len(), containers.iter().map(|(k, v)| format!("{k} {v}")).collect::<Vec<_>>().join(", "));
+    let cfg = Config::default();
+    let rot = RotCache::new(&pattern());
+    let (mut t_hash, mut t_prep) = (Vec::new(), Vec::new());
+    let mut fps = Vec::new();
+    for w in works.iter() {
+        let t0 = Instant::now();
+        fps.push(hash(&w.img.px, w.img.w, w.img.h, &cfg, &rot));
+        t_hash.push(t0.elapsed().as_secs_f64() * 1e3);
+    }
+    let sides: Vec<Prepared> = fps.iter().map(|f| Prepared::new(&f.t1, Some(&f.t2)).unwrap()).collect();
+    let (x1b, x2b) = (XBound::x1(), XBound::shipped());
+    let mut xs2 = Vec::new();
+    for f in fps.iter() {
+        let t0 = Instant::now();
+        xs2.push(XPrepared::new(Prepared::new(&f.t1, Some(&f.t2)).unwrap(), &x2b));
+        t_prep.push(t0.elapsed().as_secs_f64() * 1e3);
+    }
+    let xs1: Vec<XPrepared> = fps.iter().map(|f| XPrepared::new(Prepared::new(&f.t1, Some(&f.t2)).unwrap(), &x1b)).collect();
+
+    // ---- what the works are
+    let q = |v: &mut Vec<f64>| format!("{:.0} / {:.0} / {:.0} / {:.0} / {:.0}", pct(v, 0.0), pct(v, 0.1), pct(v, 0.5), pct(v, 0.9), pct(v, 1.0));
+    let mut wv: Vec<f64> = works.iter().map(|w| w.img.w as f64).collect();
+    let mut hv: Vec<f64> = works.iter().map(|w| w.img.h as f64).collect();
+    let norm = |i: usize| -> (usize, usize) { let s = sides[i].t1.scale.max(1) as usize; (sides[i].t1.width / s, sides[i].t1.height / s) };
+    let mut nlong: Vec<f64> = (0..n).map(|i| { let (a, b) = norm(i); a.max(b) as f64 }).collect();
+    let mut kp: Vec<f64> = sides.iter().map(|p| p.kp.len() as f64).collect();
+    let mut pal: Vec<f64> = sides.iter().map(|p| p.t1.count("palette") as f64).collect();
+    let mut codes: Vec<f64> = sides.iter().map(|p| p.bag.len() as f64).collect();
+    println!("| per work | min / p10 / p50 / p90 / max |");
+    println!("|---|---:|");
+    println!("| width, height (px) | {} · {} |", q(&mut wv), q(&mut hv));
+    println!("| long side after the front end's integer downscale (px) | {} |", q(&mut nlong));
+    println!("| Tier-2 keypoints | {} |", q(&mut kp));
+    println!("| palette entries on the wire | {} |", q(&mut pal));
+    println!("| Tier-1 local codes | {} |", q(&mut codes));
+    println!("| hash, native, one core (ms) | {} |", q(&mut t_hash.clone()));
+    println!("| xprepare under X2 (ms) | {} |", q(&mut t_prep.clone()));
+    let count = |f: &dyn Fn(usize) -> bool| (0..n).filter(|&i| f(i)).count();
+    let pctn = |c: usize| 100.0 * c as f64 / n.max(1) as f64;
+    let up = count(&|i| sides[i].t1.scale > 1);
+    let sil = count(&|i| sides[i].t1.flags & paph::wire::F_SIL != 0);
+    let matte = count(&|i| sides[i].t1.flags & paph::wire::F_MATTE != 0);
+    let flat = count(&|i| sides[i].t1.flags & paph::wire::F_FLAT != 0);
+    let m16 = count(&|i| { let (a, b) = norm(i); a % 16 == 0 && b % 16 == 0 });
+    let l128 = count(&|i| { let (a, b) = norm(i); a.max(b) <= 128 });
+    println!("\nIntegerly upscaled (the hasher divides them first): {up} ({:.0}%). Real transparency or a folded matte (the SIL family present): {sil} ({:.0}%), a matte folded: {matte}. Flat thumbnail: {flat}. Both sides multiples of 16 after the downscale: {m16} ({:.0}%); long side at most 128 px: {l128} ({:.0}%).", pctn(up), pctn(sil), pctn(m16), pctn(l128));
+    // the pixagram-search integration hashes a work as it is up to 768² pixels
+    // (`PAPH_MAX_PIXELS`) and brings larger ones inside that budget first
+    let over_budget: Vec<String> = works.iter().filter(|w| w.img.w * w.img.h > 768 * 768).map(|w| format!("{} × {}", w.img.w, w.img.h)).collect();
+    println!("As uploaded, long side over 430 px: {}; over 768² pixels, the pixagram-search integration's hashing budget: {} ({}).", count(&|i| works[i].img.w.max(works[i].img.h) > 430), over_budget.len(), over_budget.join(", "));
+    for th in [8usize, 12, 32, 64] {
+        let c = count(&|i| sides[i].kp.len() < th);
+        print!("{}fewer than {th} keypoints: {c} ({:.0}%)", if th == 8 { "Works with " } else { ", " }, pctn(c));
+    }
+    println!(".");
+
+    // ---- every pair
+    let base = Profile::cal004();
+    let bcfg = paph::v4::bind(&cfg, &base);
+    let si = SiProfile::si2();
+    let sigs: Vec<SiSig> = (0..n).map(|i| SiSig::from_prepared(&sides[i], &x2b, &si)).collect();
+    let sq: Vec<SiQuery> = (0..n).map(|i| SiQuery::from_prepared(&sides[i], &x2b, &si)).collect();
+    let (mut ctx, mut rs) = (XCtx::new(), RankScratch::new());
+    let opts = XRankOptions::default();
+    let mut st42 = [0usize; 6];
+    let mut st42_same = [0usize; 6];
+    let mut why: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    let (mut t42, mut tx2, mut tx1, mut tscr, mut trank42) = (0f64, 0f64, 0f64, 0f64, 0f64);
+    let mut cls = [0usize; 4];
+    let mut scr = [0usize; 5];
+    let mut door_open = 0usize;
+    let (mut gate42_pass, mut si_adm, mut si_adm_copy) = (0usize, 0usize, 0usize);
+    let mut gate42_out = [0usize; 6];
+    let (mut x2_copy, mut x1_copy, mut x2_false, mut x1_false, mut gate42_lost) = (0usize, 0usize, 0usize, 0usize, 0usize);
+    let mut copies: Vec<String> = Vec::new();
+    // XRank under X2 by how it decided: [gated, FAST, FALLBACK / EXACT42 ran] × (count, seconds)
+    let mut exec2 = [(0usize, 0f64); 3];
+    let (mut all_rows, mut hams, mut full, mut exact_struct) = (0usize, 0u64, 0u64, 0usize);
+    // (comparator 42's state, XRank's under X2) → queries
+    let mut xstate: std::collections::BTreeMap<(i32, i32), usize> = std::collections::BTreeMap::new();
+    let mut copy_pairs: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
+    let (mut ncopy, mut same_author) = (0usize, 0usize);
+    let np = n * n.saturating_sub(1) / 2;
+    for i in 0..n {
+        for j in i + 1..n {
+            let (pa, pb) = (&sides[i], &sides[j]);
+            let swapped = canon_swapped(pa, pb);
+            let (ca, cb) = if swapped { (pb, pa) } else { (pa, pb) };
+            let t0 = Instant::now();
+            let v = compare_in(&mut PairCtx::new(ca, cb), swapped, &bcfg, &base, Reading::Lean).base;
+            t42 += t0.elapsed().as_secs_f64();
+            let s42 = state_code(v.verdict);
+            st42[s42.clamp(0, 5) as usize] += 1;
+            st42_same[s42.clamp(0, 5) as usize] += (works[i].author == works[j].author) as usize;
+            if s42 == 2 {
+                *why.entry(v.class.to_string()).or_insert(0) += 1;
+            }
+            let is_copy = s42 == 3 || s42 == 4;
+            // comparator 42's own gated rank on this candidate, as `rank` (gate:
+            // true) runs it: the stage-1 screen, then the lean compare on the
+            // pairs it passes, sharing the descriptor scans (xbench's rank42)
+            let t0 = Instant::now();
+            let mut pc = PairCtx::new(ca, cb);
+            let g = paph::v42::screen_in(&mut pc, &bcfg, &base).pass;
+            if g {
+                std::hint::black_box(compare_in(&mut pc, swapped, &bcfg, &base, Reading::Lean));
+            }
+            trank42 += t0.elapsed().as_secs_f64();
+            gate42_pass += g as usize;
+            gate42_out[s42.clamp(0, 5) as usize] += (!g) as usize;
+            let t0 = Instant::now();
+            let s = xscreen(&xs2[i], &xs2[j], &cfg, &x2b, &mut ctx);
+            tscr += t0.elapsed().as_secs_f64();
+            cls[match s.route_class { RouteClass::Reject => 0, RouteClass::Defer => 1, RouteClass::Fast => 2, _ => 3 }] += 1;
+            scr[s.state.code().clamp(0, 4) as usize] += 1;
+            door_open += (s.reason == "structure") as usize;
+            for (qi, ti) in [(i, j), (j, i)] {
+                let mut out = vec![0i32; XRANK_FIELDS];
+                let t0 = Instant::now();
+                xrank(&xs2[qi], &[Some(&xs2[ti])], &cfg, &x2b, &opts, &mut ctx, &mut rs, &mut out);
+                let dt = t0.elapsed().as_secs_f64();
+                tx2 += dt;
+                let e = if out[0] < 0 { 0 } else if out[23] & 8 != 0 { 2 } else { 1 };
+                exec2[e].0 += 1;
+                exec2[e].1 += dt;
+                if e > 0 {
+                    // how far the sparse scan went, and what it evaluated
+                    all_rows += (out[9] as usize >= sides[qi].kp.len().min(sides[ti].kp.len())) as usize;
+                    exact_struct += (out[17] != 0) as usize;
+                    hams += out[20] as u64;
+                    full += out[21] as u64;
+                }
+                *xstate.entry((s42, out[0])).or_insert(0) += 1;
+                let c2 = out[0] == 3 || out[0] == 4;
+                let t0 = Instant::now();
+                xrank(&xs1[qi], &[Some(&xs1[ti])], &cfg, &x1b, &opts, &mut ctx, &mut rs, &mut out);
+                tx1 += t0.elapsed().as_secs_f64();
+                let c1 = out[0] == 3 || out[0] == 4;
+                let adm = sq[qi].score(&sigs[ti]) >= si.threshold;
+                if is_copy {
+                    x2_copy += c2 as usize;
+                    x1_copy += c1 as usize;
+                    si_adm_copy += adm as usize;
+                } else {
+                    x2_false += c2 as usize;
+                    x1_false += c1 as usize;
+                    si_adm += adm as usize;
+                }
+            }
+            if is_copy {
+                ncopy += 1;
+                copy_pairs.insert((i, j));
+                gate42_lost += (!g) as usize;
+                let same = works[i].author == works[j].author;
+                same_author += same as usize;
+                copies.push(format!("{}\t{}/{}\t{}/{}\t{}\t{}\t{}\n", v.verdict, works[i].author, works[i].permlink, works[j].author, works[j].permlink, if same { "same author" } else { "two authors" }, v.class, if g { "gate passes" } else { "gate screens out" }));
+            }
+        }
+    }
+    std::fs::write(format!("{src}/copies.tsv"), copies.concat()).unwrap();
+
+    let names = ["Unrelated", "Related", "Suspected", "Copy", "Identical", "Indeterminate"];
+    println!("\nEvery pair of distinct works ({np} pairs, {} queries in both arrival orders):\n", 2 * np);
+    let same_pairs: usize = st42_same.iter().sum();
+    println!("| comparator 42 (lean) | pairs | of them one author's ({same_pairs} such pairs in all) |");
+    println!("|---|---:|---:|");
+    for k in 0..6 {
+        println!("| {} | {} | {} |", names[k], st42[k], st42_same[k]);
+    }
+    println!("\nComparator 42's class on the Suspected pairs: {}.", why.iter().rev().map(|(k, v)| format!("{k} {v}")).collect::<Vec<_>>().join("; "));
+    println!("\nOf the {ncopy} pairs comparator 42 calls Copy or Identical, {same_author} have one author; XRank shown the target alone reads Copy on {x2_copy} of {} queries under X2 and {x1_copy} under X1; comparator 42's own gated rank screens out {gate42_lost} of the {ncopy}; SI2 admits {si_adm_copy} of the {} queries at θ = {}. (The pairs: {src}/copies.tsv.)", 2 * ncopy, 2 * ncopy, si.threshold);
+    let nneg = 2 * (np - ncopy);
+    println!("On the {} other queries: XRank reads Copy on {x2_false} under X2 and {x1_false} under X1; SI2 admits {si_adm} ({:.2}%).", nneg, 100.0 * si_adm as f64 / nneg.max(1) as f64);
+    println!("The route class under X2: Reject {} ({:.1}%), Defer {} ({:.1}%), Fast {} ({:.1}%), Absent {}; the pair screen: Reject {}, Defer {} ({door_open} of them on the open structural door), Pass {}, Identical {}; comparator 42's stage-1 screen passes {gate42_pass} ({:.1}%).", cls[0], 100.0 * cls[0] as f64 / np as f64, cls[1], 100.0 * cls[1] as f64 / np as f64, cls[2], 100.0 * cls[2] as f64 / np as f64, cls[3], scr[0], scr[1], scr[2], scr[3], 100.0 * gate42_pass as f64 / np as f64);
+    println!("Mean cost a pair, native, one core: comparator 42 {:.0} µs; comparator 42's gated rank (`rank`, gate: true — the stage-1 screen, and comparator 42 on the pairs it passes) {:.0} µs a candidate; the pair screen (X2) {:.1} µs; XRank a query, X2 {:.0} µs, X1 {:.0} µs.", 1e6 * t42 / np as f64, 1e6 * trank42 / np as f64, 1e6 * tscr / np as f64, 1e6 * tx2 / (2 * np) as f64, 1e6 * tx1 / (2 * np) as f64);
+    let lab = ["gated out", "decided by the cascade", "EXACT42 ran (fallback)"];
+    println!("XRank under X2, by how it decided: {}.", (0..3).map(|e| format!("{} {} ({:.0} µs each)", lab[e], exec2[e].0, 1e6 * exec2[e].1 / exec2[e].0.max(1) as f64)).collect::<Vec<_>>().join("; "));
+    let ncas = exec2[1].0 + exec2[2].0;
+    let sname = |s: i32| -> &'static str { match s { -1 => "gated out", 6 => "NotCopy", 0 => "Unrelated", 1 => "Related", 2 => "Suspected", 3 => "Copy", 4 => "Identical", _ => "Indeterminate" } };
+    let by42: Vec<String> = (0..6).filter_map(|s| {
+        let row: Vec<String> = xstate.iter().filter(|((a, _), _)| *a == s).map(|((_, x), c)| format!("{} {c}", sname(*x))).collect();
+        if row.is_empty() { None } else { Some(format!("{} → {}", names[s as usize], row.join(", "))) }
+    }).collect();
+    println!("Its states (Copy scope; queries, by comparator 42's state of the pair): {}. Comparator 42's own gated rank screens out, of the pairs it calls Unrelated / Related / Suspected / Copy: {} / {} / {} / {}.", by42.join("; "), gate42_out[0], gate42_out[1], gate42_out[2], gate42_out[3] + gate42_out[4]);
+    println!("On the {ncas} queries that reached the cascade (decided there or by EXACT42), the sparse scan read every row of the smaller side on {all_rows} ({:.1}%) and computed {:.1}% of the descriptor distances the exhaustive scan computes ({hams} of {full}); every structural channel was computed exactly on {exact_struct} ({:.1}%).", 100.0 * all_rows as f64 / ncas.max(1) as f64, 100.0 * hams as f64 / full.max(1) as f64, 100.0 * exact_struct as f64 / ncas.max(1) as f64);
+
+    // ---- SI on the real population: how the cells spread, which families
+    // carry an unrelated pair's score, what is admitted — SI2 (the synthetic
+    // fit) and SI3 (fitted on these very works: in-sample, the held-out
+    // numbers are `sibench chainfit`'s)
+    use paph::x::si::code::coarse;
+    let fam_names = ["runs", "tone", "pal", "shape", "sil", "kpgeo", "local", "band"];
+    for (prof, label) in [(SiProfile::si2(), "SI2, the synthetic fit"), (SiProfile::si3(), "SI3, fitted on these works (in-sample)")] {
+        let sigs: Vec<SiSig> = (0..n).map(|i| SiSig::from_prepared(&sides[i], &x2b, &prof)).collect();
+        let sq: Vec<SiQuery> = (0..n).map(|i| SiQuery::from_prepared(&sides[i], &x2b, &prof)).collect();
+        println!("\n{label}: its cells over the {n} works (fine 256 / coarse 16):\n");
+        println!("| family | present | occupied fine | effective fine cells | largest fine cell | effective coarse cells | P(random pair shares a fine cell) |");
+        println!("|---|---:|---:|---:|---:|---:|---:|");
+        for f in 0..FAMILIES {
+            let (mut h, mut hc, mut m) = ([0u64; CELLS], [0u64; COARSE], 0u64);
+            for s in sigs.iter() {
+                if s.present >> f & 1 != 0 {
+                    h[s.cells[f] as usize] += 1;
+                    hc[coarse(s.cells[f]) as usize] += 1;
+                    m += 1;
+                }
+            }
+            let ent = |h: &[u64]| -> f64 { h.iter().filter(|&&x| x > 0).map(|&x| { let p = x as f64 / m as f64; -p * p.ln() }).sum::<f64>().exp() };
+            let coll: f64 = h.iter().map(|&x| (x as f64 / m.max(1) as f64).powi(2)).sum();
+            println!("| {} | {:.0}% | {} | {:.0} | {:.1}% | {:.1} | 1/{:.0} |", FAMILY_NAMES[f], 100.0 * m as f64 / n as f64, h.iter().filter(|&&x| x > 0).count(), ent(&h), 100.0 * *h.iter().max().unwrap() as f64 / m.max(1) as f64, ent(&hc), 1.0 / coll.max(1e-9));
+        }
+        let (mut reach, mut wsum) = ([0u64; ALL_FAMILIES], [0i64; ALL_FAMILIES]);
+        let mut scores: Vec<f64> = Vec::new();
+        let mut copy_adm = 0usize;
+        for i in 0..n {
+            for j in 0..n {
+                if i == j {
+                    continue;
+                }
+                if copy_pairs.contains(&(i.min(j), i.max(j))) {
+                    copy_adm += (sq[i].score(&sigs[j]) >= prof.threshold) as usize;
+                    continue;
+                }
+                let l = sq[i].levels(&sigs[j]);
+                for f in 0..ALL_FAMILIES {
+                    if let Some(v) = l[f] {
+                        if v > 0 {
+                            reach[f] += 1;
+                        }
+                        wsum[f] += (if f < FAMILIES { sq[i].wv[f][v] } else if f == FAMILY_LOCAL { sq[i].wl[v] } else { sq[i].wb[v] }) as i64;
+                    }
+                }
+                scores.push(sq[i].score(&sigs[j]) as f64);
+            }
+        }
+        let nq = scores.len().max(1) as f64;
+        println!("\nOn the {} unrelated queries (ordered pairs, copies left out), per family: the share whose candidate reaches a probe level (a probed cell; for the MinHash families, enough equal lanes), and the mean weight it adds to the score.\n", scores.len());
+        println!("| family | reaches a level | mean weight |");
+        println!("|---|---:|---:|");
+        for f in 0..ALL_FAMILIES {
+            println!("| {} | {:.1}% | {:+.1} |", fam_names[f], 100.0 * reach[f] as f64 / nq, wsum[f] as f64 / nq);
+        }
+        let adm = |t: f64| 100.0 * scores.iter().filter(|&&s| s >= t).count() as f64 / nq;
+        let mut sc = scores.clone();
+        println!("\nTheir scores: p50 {:.0}, p90 {:.0}, p99 {:.0}, max {:.0}; admitted at the profile's θ = {}: {:.2}%, at θ = 32 / 64 / 96: {:.1}% / {:.1}% / {:.1}%. The copy queries admitted at θ: {copy_adm} of {}.", pct(&mut sc, 0.5), pct(&mut sc, 0.9), pct(&mut sc, 0.99), pct(&mut sc, 1.0), prof.threshold, adm(prof.threshold as f64), adm(32.0), adm(64.0), adm(96.0), 2 * copy_pairs.len());
+    }
+}
+
+/// The pairs of distinct originals comparator 42 calls Copy (or Identical),
+/// as (record, record) with the smaller first: on the chain's corpus, works
+/// that are copies of each other before any transform — never unrelated.
+fn originals_copies42(c: &Corpus) -> std::collections::HashSet<(usize, usize)> {
+    let base = Profile::cal004();
+    let bcfg = paph::v4::bind(&Config::default(), &base);
+    let mut copies42 = std::collections::HashSet::new();
+    for a in 0..c.nb {
+        for b in a + 1..c.nb {
+            let (i, j) = (c.at[&(a, 0)], c.at[&(b, 0)]);
+            let (pa, pb) = (&c.sides[i], &c.sides[j]);
+            let swapped = canon_swapped(pa, pb);
+            let (ca, cb) = if swapped { (pb, pa) } else { (pa, pb) };
+            let v = state_code(compare_in(&mut PairCtx::new(ca, cb), swapped, &bcfg, &base, Reading::Lean).base.verdict);
+            if v == 3 || v == 4 {
+                copies42.insert((i.min(j), i.max(j)));
+            }
+        }
+    }
+    copies42
+}
+
+/// A family whose codebook would rest on fewer background works than this
+/// keeps SI2's (on the chain: SIL, which only works with transparency carry).
+const CHAIN_MIN_BOOK: usize = 40;
+
+/// Copy pairs of the given bases, both arrival orders, (query, target).
+fn pairs_of(c: &Corpus, bases: &[i32], keep: &dyn Fn(i32, i32) -> bool) -> Vec<(usize, usize)> {
+    let mut v = Vec::new();
+    for &b in bases {
+        let i = c.at[&(b, 0)];
+        for t in 1..TRANSFORMS.len() as i32 {
+            if keep(b, t) {
+                let j = c.at[&(b, t)];
+                v.push((j, i));
+                v.push((i, j));
+            }
+        }
+    }
+    v
+}
+
+/// An SI profile fitted on the chain's works: the background is the given
+/// bases' originals, the noise and evidence their copies — what `sibench
+/// fit` does with the synthetic population, on real works.  `copies42`: the
+/// pairs of distinct originals comparator 42 calls Copy.  Returns the
+/// profile and the families that kept SI2's codebook.
+fn chain_profile(c: &Corpus, mh: &[SiSig], train: &[i32], name: &str, xb: &XBound, copies42: &std::collections::HashSet<(usize, usize)>) -> (SiProfile, Vec<&'static str>) {
+    let background: Vec<usize> = train.iter().map(|&b| c.at[&(b, 0)]).collect();
+    let paste = TRANSFORMS.iter().position(|&t| t == "paste").unwrap() as i32;
+    let noise = pairs_of(c, train, &|_, t| t != paste);
+    let evidence = pairs_of(c, train, &|b, t| t != paste && matches!(c.verdict.get(&(b, t)), Some(2) | Some(3) | Some(4)));
+    // the background is the originals themselves, so a random draw can land
+    // on a copy's own original, or on an original comparator 42 calls a copy
+    // of the query's: neither is a random pair
+    let orig = |i: usize| c.at[&(c.recs[i].base, 0)];
+    let related = |q: usize, t: usize| -> bool {
+        let (oq, ot) = (orig(q), orig(t));
+        oq == ot || copies42.contains(&(oq.min(ot), oq.max(ot)))
+    };
+    let inp = FitInput { fam: &c.fam, mh, background: &background, noise_pairs: &noise, evidence_pairs: &evidence, related: Some(&related) };
+    let mut books = fit_books(&inp);
+    let si2 = SiProfile::si2();
+    let mut kept = Vec::new();
+    for f in 0..FAMILIES {
+        if background_count(&inp, f) < CHAIN_MIN_BOOK {
+            books[f] = si2.book[f].clone();
+            kept.push(FAMILY_NAMES[f]);
+        }
+    }
+    let mut nm = [0u8; 16];
+    nm[..name.len()].copy_from_slice(name.as_bytes());
+    let o = FitOptions { name: nm, xid: xb.xid, probes: 4, random_per_query: 400, seed: 0x5349_3350_524f_5631, admit_ppm: 10_000, budget: 2000 };
+    (fit_on_books(books, &inp, &o), kept)
+}
+
+/// What a profile does on held-out real works: its copies against their
+/// originals (both orders) and every ordered pair of distinct originals
+/// comparator 42 does not call Copy.
+struct SiHeld {
+    copy: Vec<i32>,
+    /// the transform of each copy query
+    tf: Vec<usize>,
+    unrel: Vec<i32>,
+    reach_copy: [u64; ALL_FAMILIES],
+    reach_unrel: [u64; ALL_FAMILIES],
+}
+
+fn si_heldout(c: &Corpus, prof: &SiProfile, test: &[i32], copies42: &std::collections::HashSet<(usize, usize)>) -> SiHeld {
+    let sig = |i: usize| SiSig::from_parts(&c.fam[i], &c.routes[i], prof);
+    let mut h = SiHeld { copy: Vec::new(), tf: Vec::new(), unrel: Vec::new(), reach_copy: [0; ALL_FAMILIES], reach_unrel: [0; ALL_FAMILIES] };
+    let score = |q: usize, t: usize, reach: &mut [u64; ALL_FAMILIES]| -> i32 {
+        let qq = SiQuery::from_parts(sig(q), &c.fam[q], prof);
+        let st = sig(t);
+        for (f, l) in qq.levels(&st).iter().enumerate() {
+            if matches!(l, Some(v) if *v > 0) {
+                reach[f] += 1;
+            }
+        }
+        if qq.touches(&st) { qq.score(&st) } else { i32::MIN }
+    };
+    for (q, t) in pairs_of(c, test, &|b, t| c.copy(b, t)) {
+        let s = score(q, t, &mut h.reach_copy);
+        h.copy.push(s);
+        h.tf.push(c.recs[if c.recs[q].tf > 0 { q } else { t }].tf as usize);
+    }
+    let orig: Vec<usize> = test.iter().map(|&b| c.at[&(b, 0)]).collect();
+    for &i in orig.iter() {
+        for &j in orig.iter() {
+            if i != j && !copies42.contains(&(i.min(j), i.max(j))) {
+                let s = score(i, j, &mut h.reach_unrel);
+                h.unrel.push(s);
+            }
+        }
+    }
+    h
+}
+
+/// `sibench chainfit [--out PATH]` on the chain's corpus (`--corpus
+/// chain.bin`): SI fitted on real works.  Two folds (the corpus' own split)
+/// fit on one half and are measured on the other against SI2; then the fit on
+/// every base, written as SI3-PROVISIONAL.
+fn cmd_chainfit(c: &Corpus, xb: &XBound, out: &str, name: &str) {
+    assert!(!name.is_empty() && name.len() <= 16, "--name: 1 to 16 bytes");
+    let mh: Vec<SiSig> = c.routes.iter().map(SiSig::minhash).collect();
+    let fold_a: Vec<i32> = (0..c.nb).filter(|&b| !is_eval_base(b)).collect();
+    let fold_b: Vec<i32> = (0..c.nb).filter(|&b| is_eval_base(b)).collect();
+    let all: Vec<i32> = (0..c.nb).collect();
+    // comparator 42 between distinct originals: the pairs that are not unrelated
+    let copies42 = originals_copies42(c);
+    println!("PAPH-SI fitted on the chain's works — {} real bases ({} and {} in the two folds), {} pairs of distinct originals comparator 42 calls Copy left out of the unrelated ones.\n", c.nb, fold_a.len(), fold_b.len(), copies42.len());
+    let si2 = SiProfile::si2();
+    let rate = |v: &[i32], th: i32| v.iter().filter(|&&s| s >= th).count() as f64 / v.len().max(1) as f64;
+    // the recall at the threshold that admits a given share of unrelated pairs
+    let at_share = |h: &SiHeld, share: f64| -> (i32, f64) {
+        let mut u = h.unrel.clone();
+        u.sort_unstable_by(|a, b| b.cmp(a));
+        let k = ((u.len() as f64 * share) as usize).min(u.len().saturating_sub(1));
+        let th = u[k].saturating_add(1).max(1);
+        (th, rate(&h.copy, th))
+    };
+    let names = ["runs", "tone", "pal", "shape", "sil", "kpgeo", "local", "band"];
+    println!("| fitted on → measured on | profile | θ | copies admitted at θ | unrelated admitted at θ | at θ = 1: copies / unrelated | recall with 1% / 5% of unrelated admitted |");
+    println!("|---|---|---:|---:|---:|---:|---:|");
+    let mut reach_rows: Vec<String> = Vec::new();
+    let mut per_tf: Vec<(String, Vec<(usize, usize)>)> = Vec::new();
+    for (train, test, label) in [(&fold_a, &fold_b, "fold A → fold B"), (&fold_b, &fold_a, "fold B → fold A")] {
+        let (p3, kept) = chain_profile(c, &mh, train, name, xb, &copies42);
+        for (p, nm) in [(&si2, "SI2 (synthetic)"), (&p3, "chain fit")] {
+            let h = si_heldout(c, p, test, &copies42);
+            let (t1, r1) = at_share(&h, 0.01);
+            let (t5, r5) = at_share(&h, 0.05);
+            println!("| {label} | {nm} | {} | {:.1}% of {} | {:.2}% of {} | {:.1}% / {:.2}% | {:.1}% (θ {t1}) / {:.1}% (θ {t5}) |", p.threshold, 100.0 * rate(&h.copy, p.threshold), h.copy.len(), 100.0 * rate(&h.unrel, p.threshold), h.unrel.len(), 100.0 * rate(&h.copy, 1), 100.0 * rate(&h.unrel, 1), 100.0 * r1, 100.0 * r5);
+            let mut v = vec![(0usize, 0usize); TRANSFORMS.len()];
+            for (k, &sc) in h.copy.iter().enumerate() {
+                v[h.tf[k]].0 += 1;
+                v[h.tf[k]].1 += (sc >= p.threshold) as usize;
+            }
+            match per_tf.iter_mut().find(|r| r.0 == nm) {
+                Some(r) => {
+                    for t in 0..v.len() {
+                        r.1[t].0 += v[t].0;
+                        r.1[t].1 += v[t].1;
+                    }
+                }
+                None => per_tf.push((nm.to_string(), v)),
+            }
+            reach_rows.push(format!("| {label} | {nm} | {} |", (0..ALL_FAMILIES).map(|f| format!("{:.0} / {:.0}", 100.0 * h.reach_copy[f] as f64 / h.copy.len().max(1) as f64, 100.0 * h.reach_unrel[f] as f64 / h.unrel.len().max(1) as f64)).collect::<Vec<_>>().join(" | ")));
+        }
+        if !kept.is_empty() {
+            println!("|  | ({} kept SI2's codebook: under {CHAIN_MIN_BOOK} works in the fold carry it) | | | | |", kept.join(", "));
+        }
+    }
+    println!("\nCopies admitted at each profile's own θ, both folds together, by transform:\n");
+    println!("| transform | {} |", per_tf.iter().map(|r| r.0.clone()).collect::<Vec<_>>().join(" | "));
+    println!("|---|{}", "---:|".repeat(per_tf.len()));
+    for t in 1..TRANSFORMS.len() {
+        if per_tf[0].1[t].0 > 0 {
+            println!("| {} | {} |", TRANSFORMS[t], per_tf.iter().map(|r| format!("{:.0}% of {}", 100.0 * r.1[t].1 as f64 / r.1[t].0 as f64, r.1[t].0)).collect::<Vec<_>>().join(" | "));
+        }
+    }
+    println!("\nPer family, the share of copy queries / unrelated queries whose candidate reaches a probe level (%):\n");
+    println!("| | | {} |", names.join(" | "));
+    println!("|---|---|{}", "---:|".repeat(ALL_FAMILIES));
+    for r in reach_rows {
+        println!("{r}");
+    }
+    let (p3, kept) = chain_profile(c, &mh, &all, name, xb, &copies42);
+    let b = p3.encode();
+    std::fs::write(out, &b).expect("write profile");
+    println!("\nfitted {} on all {} bases' originals ({} kept SI2's codebook): {} bytes, id {} → {out}", p3.name_str(), c.nb, if kept.is_empty() { "none".to_string() } else { kept.join(", ") }, b.len(), paph::sha256::hex(&p3.id()));
+    println!("  probes {}  threshold {}  budget {}", p3.probes, p3.threshold, p3.budget);
+    println!("  | family | weights none / near / exact | axis noise σ (projection units) |");
+    for f in 0..FAMILIES {
+        let cb = &p3.book[f];
+        println!("  | {} | {} / {} / {} | {:?} |", FAMILY_NAMES[f], cb.w[0], cb.w[1], cb.w[2], cb.sig);
+    }
+    println!("  | local | {:?} (0 / 1 / 2–3 / ≥4 equal band keys) | |", p3.w_local);
+    println!("  | band | {:?} | |", p3.w_band);
+}
+
 /// `sibench doorprof`: where the structural door shuts on unrelated pairs
 /// (each eval base against 60 eval distractors), what each step costs, and
 /// the cheapest orders of the steps on those pairs.
-fn cmd_doorprof(c: &Corpus, xb: &XBound) {
+fn cmd_doorprof(c: &Corpus, xb: &XBound, real: bool) {
     use paph::x::compare::{door_step, DOOR_ORDER, DOOR_LOCAL_BOUND};
     use paph::x::structural::*;
     let base = &xb.base;
     let mut d0 = vec![0u8; 128 * 128];
     let label = |k: usize| -> &'static str { if k == DOOR_LOCAL_BOUND || k == 7 { "local bound" } else { CH_NAMES[k] } };
-    let mut pairs: Vec<(XPrepared, XPrepared)> = Vec::new();
-    for b in 0..c.nb {
-        if !is_eval_base(b) {
-            continue;
+    // the sides once, the pairs as indices into them, canonical order
+    let mut xs: Vec<XPrepared> = Vec::new();
+    let mut idx: HashMap<usize, usize> = HashMap::new();
+    let mut side = |i: usize, xs: &mut Vec<XPrepared>| -> usize {
+        *idx.entry(i).or_insert_with(|| {
+            xs.push(XPrepared::new(Prepared::new(&c.recs[i].t1, Some(&c.recs[i].t2)).unwrap(), xb));
+            xs.len() - 1
+        })
+    };
+    let mut raw: Vec<(usize, usize)> = Vec::new();
+    let mut left_out = 0usize;
+    if real {
+        // --real (the chain's corpus): every pair of distinct originals but
+        // those comparator 42 calls copies of each other
+        let copies42 = originals_copies42(c);
+        left_out = copies42.len();
+        for a in 0..c.nb {
+            for b in a + 1..c.nb {
+                let (i, j) = (c.at[&(a, 0)], c.at[&(b, 0)]);
+                if !copies42.contains(&(i.min(j), i.max(j))) {
+                    raw.push((side(i, &mut xs), side(j, &mut xs)));
+                }
+            }
         }
-        let i = c.at[&(b, 0)];
-        for k in 0..60 {
-            let d = c.ev_d[(b as usize * 7919 + k * 104_729) % c.ev_d.len()];
-            let q = XPrepared::new(Prepared::new(&c.recs[i].t1, Some(&c.recs[i].t2)).unwrap(), xb);
-            let x = XPrepared::new(Prepared::new(&c.recs[d].t1, Some(&c.recs[d].t2)).unwrap(), xb);
-            if canon_swapped(&q.p, &x.p) {
-                pairs.push((x, q));
-            } else {
-                pairs.push((q, x));
+    } else {
+        for b in 0..c.nb {
+            if !is_eval_base(b) {
+                continue;
+            }
+            let i = c.at[&(b, 0)];
+            for k in 0..60 {
+                let d = c.ev_d[(b as usize * 7919 + k * 104_729) % c.ev_d.len()];
+                raw.push((side(i, &mut xs), side(d, &mut xs)));
             }
         }
     }
+    let pairs: Vec<(&XPrepared, &XPrepared)> = raw.iter().map(|&(q, x)| if canon_swapped(&xs[q].p, &xs[x].p) { (&xs[x], &xs[q]) } else { (&xs[q], &xs[x]) }).collect();
     let mut at = [0usize; 10];
     let t0 = Instant::now();
-    for (a, b) in pairs.iter() {
+    for &(a, b) in pairs.iter() {
         at[door_step(a, b, base, &mut d0).1] += 1;
     }
     let us = t0.elapsed().as_secs_f64() * 1e6 / pairs.len() as f64;
-    println!("The structural door on {} unrelated pairs: {:.1} µs a pair natively, open on {}.", pairs.len(), us, at[9]);
+    let whose = if real { format!(" (every pair of distinct bases but the {left_out} comparator 42 calls Copy)") } else { String::new() };
+    println!("The structural door on {} unrelated pairs{whose}: {:.1} µs a pair natively, open on {}.", pairs.len(), us, at[9]);
     println!("  shut before any channel: not certifiable {}, the bar out of reach {}", at[0], at[1]);
     for (k, &st) in DOOR_ORDER.iter().enumerate() {
         println!("  shut after {:<12} {}", label(st), at[2 + k]);
     }
     // every step on every certifiable pair: per-call cost, and every order
     let mut rows: Vec<([i64; 7], [bool; 7], i64, i64, [f64; 8])> = Vec::new();
-    for (a, b) in pairs.iter() {
+    for &(a, b) in pairs.iter() {
         let mut s = Structural::new(a, b, base);
         if !s.measurable[CH_LOCAL] || s.secondaries() < base.min_secondaries.max(0) as usize {
             continue;
@@ -1589,8 +2217,48 @@ fn xbound_for(args: &[String]) -> XBound {
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let dir = sarg(&args, "--dir", "target/si-corpus");
+    let cfile = format!("{dir}/{}", sarg(&args, "--corpus", "corpus.bin"));
     let cmd = args.get(1).map(|s| s.as_str()).unwrap_or("help");
     match cmd {
+        "corpus" if args.iter().any(|a| a == "--chain") => {
+            // real bases: the chain's artworks under the twenty transforms, a
+            // real host for the paste; the population stays the synthetic
+            // distractors (the chain is far smaller than any population worth
+            // measuring a reduction on — `sibench chain` measures its pairs)
+            let src = sarg(&args, "--chain", "target/chain-corpus");
+            let nd = arg(&args, "--distractors", 8000);
+            let name = sarg(&args, "--out", "chain.bin");
+            std::fs::create_dir_all(&dir).unwrap();
+            let (works, dups) = load_chain(&src);
+            let keep: Vec<usize> = (0..works.len()).filter(|&i| works[i].img.w * works[i].img.h <= CHAIN_BASE_MAX_PIXELS).collect();
+            let imgs: std::sync::Arc<Vec<Img>> = std::sync::Arc::new(keep.iter().map(|&i| works[i].img.clone()).collect());
+            let nb = imgs.len();
+            let mut jobs: Vec<(i32, i32, Box<dyn Fn() -> Img + Send + Sync>)> = Vec::new();
+            for i in 0..nb {
+                for t in 0..TRANSFORMS.len() {
+                    let imgs = imgs.clone();
+                    jobs.push((i as i32, t as i32, Box::new(move || {
+                        let b = &imgs[i];
+                        if TRANSFORMS[t] == "paste" {
+                            paste(b, &chain_host(b, &imgs[(i + 1) % imgs.len()]), b.w / 2 + 3, b.h / 3 + 5)
+                        } else {
+                            transform(b, t, 31 + i as u64)
+                        }
+                    })));
+                }
+            }
+            for k in 0..nd {
+                jobs.push((-1, -1, Box::new(move || distractor(k))));
+            }
+            let t0 = Instant::now();
+            let n = jobs.len();
+            let recs = hash_all(jobs);
+            save(&format!("{dir}/{name}"), &recs);
+            // which artwork each base is, for the reports that name pairs
+            let map: String = keep.iter().enumerate().map(|(b, &i)| format!("{b}\t{}\t{}\t{}\t{}\n", works[i].author, works[i].permlink, works[i].created, works[i].sha)).collect();
+            std::fs::write(format!("{dir}/{name}.bases.tsv"), map).unwrap();
+            println!("{} ({}): {} artworks, {} byte-identical re-uploads left out, {} over {} px left out as bases; hashed {n} works ({nb} bases × {} variants + {nd} synthetic distractors) in {:.1} s → {dir}/{name}", src, chain_snapshot(&src), works.len() + dups, dups, works.len() - nb, CHAIN_BASE_MAX_PIXELS, TRANSFORMS.len(), t0.elapsed().as_secs_f64());
+        }
         "corpus" => {
             let nb = arg(&args, "--bases", 120);
             let nd = arg(&args, "--distractors", 8000);
@@ -1614,7 +2282,7 @@ fn main() {
         }
         "fit" => {
             let xb = xbound_for(&args);
-            let c = Corpus::open(&dir, &xb);
+            let c = Corpus::open(&cfile, &xb);
             let out = sarg(&args, "--out", &format!("../docs/calibration/{}.psi", si_name_for(&xb)));
             cmd_fit(&c, &xb, &out);
         }
@@ -1624,7 +2292,7 @@ fn main() {
             // what comparator 42 certified them on, and whether its own
             // gated rank screens them out too
             let xb = xbound_for(&args);
-            let c = Corpus::open(&dir, &xb);
+            let c = Corpus::open(&cfile, &xb);
             let cfg = Config::default();
             let base = Profile::cal004();
             let bcfg = paph::v4::bind(&cfg, &base);
@@ -1711,28 +2379,29 @@ fn main() {
         }
         "doorprof" => {
             let xb = xbound_for(&args);
-            let c = Corpus::open(&dir, &xb);
-            cmd_doorprof(&c, &xb);
+            let c = Corpus::open(&cfile, &xb);
+            cmd_doorprof(&c, &xb, args.iter().any(|a| a == "--real"));
+        }
+        "chain" => cmd_chain(&sarg(&args, "--chain", "target/chain-corpus")),
+        "chainfit" => {
+            let xb = xbound_for(&args);
+            let c = Corpus::open(&cfile, &xb);
+            // the artefact is named after the profile: a fit named otherwise never
+            // lands on SI3's file (the crate embeds that one)
+            let name = sarg(&args, "--name", "SI3-PROVISIONAL");
+            cmd_chainfit(&c, &xb, &sarg(&args, "--out", &format!("../docs/calibration/{name}.psi")), &name);
         }
         "route" => {
             let xb = xbound_for(&args);
-            let c = Corpus::open(&dir, &xb);
+            let c = Corpus::open(&cfile, &xb);
             cmd_route(&c, &xb, &args);
         }
         "eval" => {
             let xb = xbound_for(&args);
-            let prof = match args.iter().position(|a| a == "--profile") {
-                Some(i) => SiProfile::decode(&std::fs::read(&args[i + 1]).expect("read profile")).expect("decode profile"),
-                None => {
-                    if xb.xid == XProfile::x1().id() {
-                        SiProfile::si1()
-                    } else {
-                        SiProfile::si2()
-                    }
-                }
-            };
-            let c = Corpus::open(&dir, &xb);
-            cmd_eval(&c, &prof, &xb, &args);
+            let prof = si_profile_arg(&args, &xb);
+            let c = Corpus::open(&cfile, &xb);
+            let chain = std::path::Path::new(&format!("{cfile}.bases.tsv")).exists();
+            cmd_eval(&c, &prof, &xb, &args, chain);
         }
         _ => {
             println!("sibench corpus | fit | eval   (see the header of rust/src/bin/sibench.rs)");
